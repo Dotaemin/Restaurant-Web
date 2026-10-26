@@ -28,11 +28,5 @@
     "@tailwindcss/cli": "^4.0.0",
     "prisma": "^6.3.1",
     "tailwindcss": "^4.0.0"
-  },
-  "allowScripts": {
-    "@parcel/watcher@2.5.1": true,
-    "@prisma/client@6.19.3": true,
-    "@prisma/engines@6.19.3": true,
-    "prisma@6.19.3": true
   }
 }

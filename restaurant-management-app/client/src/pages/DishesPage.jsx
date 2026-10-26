@@ -19,20 +19,27 @@ export default function DishesPage({ paginationMode = 'page' }) {
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
   const [selectedCategory, setSelectedCategory] = useState('All');
 
+  // Red loading overlay on navigation: active while initial page data resolves
+  const [navLoading, setNavLoading] = useState(paginationMode === 'page');
+
+  // Interactive page jump state ("..." in pagination bar)
+  const [isJumpOpen, setIsJumpOpen] = useState(false);
+  const [jumpPageInput, setJumpPageInput] = useState('');
+
   // Debounce search input (server-side FTS)
   useEffect(() => {
     const trimmed = searchTerm.trim();
-    const currentUrlSearch = searchParams.get('search') || '';
 
-    // If search term hasn't changed compared to URL, do NOT update searchParams or reset page
-    if (trimmed === currentUrlSearch) {
-      setDebouncedSearch(trimmed);
-      return;
-    }
+    if (paginationMode === 'page') {
+      const currentUrlSearch = searchParams.get('search') || '';
+      // If search term hasn't changed compared to URL, do NOT update searchParams or reset page
+      if (trimmed === currentUrlSearch) {
+        setDebouncedSearch(trimmed);
+        return;
+      }
 
-    const timer = setTimeout(() => {
-      setDebouncedSearch(trimmed);
-      if (paginationMode === 'page') {
+      const timer = setTimeout(() => {
+        setDebouncedSearch(trimmed);
         setSearchParams((prev) => {
           const next = new URLSearchParams(prev);
           if (trimmed) next.set('search', trimmed);
@@ -40,19 +47,26 @@ export default function DishesPage({ paginationMode = 'page' }) {
           next.set('page', '1');
           return next;
         });
-      }
-    }, 350);
-    return () => clearTimeout(timer);
+      }, 350);
+      return () => clearTimeout(timer);
+    } else {
+      // Mode 2 (load-more) & Mode 3 (infinite-scroll): URL static, keep user input in search bar
+      const timer = setTimeout(() => {
+        setDebouncedSearch(trimmed);
+      }, 350);
+      return () => clearTimeout(timer);
+    }
   }, [searchTerm, paginationMode, searchParams, setSearchParams]);
 
-  // Sync search state if URL search param changes externally (e.g. browser back/forward)
+  // Sync search state if URL search param changes externally (ONLY for Mode 1: page numbers)
   useEffect(() => {
+    if (paginationMode !== 'page') return;
     const currentUrlSearch = searchParams.get('search') || '';
     if (currentUrlSearch !== debouncedSearch && currentUrlSearch !== searchTerm) {
       setSearchTerm(currentUrlSearch);
       setDebouncedSearch(currentUrlSearch);
     }
-  }, [searchParams, debouncedSearch, searchTerm]);
+  }, [paginationMode, searchParams, debouncedSearch, searchTerm]);
 
   // Mode 1: Page Numbers Query (URL changes with ?page=X)
   const pageQuery = useQuery({
@@ -131,8 +145,15 @@ export default function DishesPage({ paginationMode = 'page' }) {
   const isSearchActive = Boolean(searchTerm.trim() || debouncedSearch);
   const isSearchLoading = isSearchActive && (searchTerm.trim() !== debouncedSearch || activeQuery.isFetching);
 
-  // Red loading overlay is only for initial mount on page mode without search
-  const showOverlayLoading = paginationMode === 'page' && !isSearchActive && pageQuery.isLoading;
+  // Remove red loading overlay once page data is ready on navigation
+  useEffect(() => {
+    if (pageQuery.data || !pageQuery.isLoading) {
+      setNavLoading(false);
+    }
+  }, [pageQuery.data, pageQuery.isLoading]);
+
+  // Red loading overlay appears every time user navigates to .../dishes and is removed after loading is done
+  const showOverlayLoading = paginationMode === 'page' && !isSearchActive && (navLoading || pageQuery.isLoading);
   const isAnyLoading = activeQuery.isLoading || isSearchLoading || isFetchingNext;
   const error = activeQuery.error?.message || (activeQuery.data?.ok === false ? activeQuery.data?.error?.message : null);
 
@@ -168,6 +189,17 @@ export default function DishesPage({ paginationMode = 'page' }) {
       return next;
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleJumpSubmit = (e) => {
+    if (e) e.preventDefault();
+    const parsed = parseInt(jumpPageInput.trim(), 10);
+    // Check if the page number is within range 1 -> <the last page>, if not, Enter does nothing (blocked)
+    if (!isNaN(parsed) && parsed >= 1 && parsed <= totalPages) {
+      handlePageChange(parsed);
+      setIsJumpOpen(false);
+      setJumpPageInput('');
+    }
   };
 
   return (
@@ -227,7 +259,7 @@ export default function DishesPage({ paginationMode = 'page' }) {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Tìm kiếm món ăn (PostgreSQL Full-Text Search)..."
+            placeholder="Tìm kiếm món ăn"
             className="w-full pl-10 pr-9 py-2.5 rounded-xl bg-white border border-gray-300 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#ba1414] focus:border-transparent shadow-xs"
           />
           {searchTerm && (
@@ -314,9 +346,13 @@ export default function DishesPage({ paginationMode = 'page' }) {
       {!isAnyLoading && !error && displayedDishes.length === 0 && (
         <div className="bg-white rounded-2xl border border-dashed border-gray-300 p-12 text-center max-w-md mx-auto">
           <Sparkles className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-          <h2 className="text-xl font-bold text-gray-700">No Dishes Found</h2>
+          <h2 className="text-xl font-bold text-gray-700">
+            {urlPage > totalPages || urlPage < 1 ? 'Trang này không tồn tại' : 'No Dishes Found'}
+          </h2>
           <p className="text-sm text-gray-500 mt-1">
-            {debouncedSearch
+            {urlPage > totalPages || urlPage < 1
+              ? 'Trang này không tồn tại.'
+              : debouncedSearch
               ? `Không tìm thấy món ăn nào khớp với "${debouncedSearch}".`
               : `There are currently no dishes available in category "${selectedCategory}".`}
           </p>
@@ -406,38 +442,34 @@ export default function DishesPage({ paginationMode = 'page' }) {
       {paginationMode === 'page' && totalPages > 1 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-gray-200">
           <div className="text-xs sm:text-sm text-gray-600">
-            Hiển thị trang <span className="font-bold text-gray-900">{urlPage}</span> / <span className="font-bold text-gray-900">{totalPages}</span> (Tổng: {totalCount} món)
+            {urlPage > totalPages || urlPage < 1 ? (
+              <span className="font-semibold text-gray-700">Trang này không tồn tại</span>
+            ) : (
+              <>
+                Hiển thị trang <span className="font-bold text-gray-900">{urlPage}</span> / <span className="font-bold text-gray-900">{totalPages}</span> (Tổng: {totalCount} món)
+              </>
+            )}
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap justify-center">
             <button
               type="button"
               disabled={urlPage <= 1}
               onClick={() => handlePageChange(urlPage - 1)}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" />
               <span>Trước</span>
             </button>
 
-            {/* Render 5 page numbers centered around current page */}
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              let p;
-              if (totalPages <= 5) {
-                p = i + 1;
-              } else if (urlPage <= 3) {
-                p = i + 1;
-              } else if (urlPage >= totalPages - 2) {
-                p = totalPages - 4 + i;
-              } else {
-                p = urlPage - 2 + i;
-              }
-              return (
+            {/* Page number buttons: all if <= 5, or range e.g. 1 2 3 ... 84 if > 5 */}
+            {totalPages <= 5 ? (
+              Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
                 <button
                   key={p}
                   type="button"
                   onClick={() => handlePageChange(p)}
-                  className={`w-8 h-8 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
+                  className={`w-8 h-8 rounded-lg text-xs sm:text-sm font-semibold transition-colors cursor-pointer ${
                     urlPage === p
                       ? 'bg-[#ba1414] text-white shadow-xs'
                       : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -445,14 +477,99 @@ export default function DishesPage({ paginationMode = 'page' }) {
                 >
                   {p}
                 </button>
-              );
-            })}
+              ))
+            ) : (
+              (() => {
+                const startPage = Math.max(1, Math.min(urlPage, totalPages - 3));
+                const windowPages = [startPage, startPage + 1, startPage + 2];
+                const showEllipsis = startPage + 2 < totalPages - 1;
+                const trailingPages = showEllipsis
+                  ? [totalPages]
+                  : Array.from({ length: totalPages - (startPage + 2) }, (_, i) => startPage + 3 + i);
+
+                return (
+                  <>
+                    {windowPages.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => handlePageChange(p)}
+                        className={`w-8 h-8 rounded-lg text-xs sm:text-sm font-semibold transition-colors cursor-pointer ${
+                          urlPage === p
+                            ? 'bg-[#ba1414] text-white shadow-xs'
+                            : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+
+                    {/* Ellipsis button or custom page jump input */}
+                    {showEllipsis && (
+                      isJumpOpen ? (
+                        <input
+                          type="number"
+                          min={1}
+                          max={totalPages}
+                          autoFocus
+                          value={jumpPageInput}
+                          onChange={(e) => setJumpPageInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleJumpSubmit();
+                            } else if (e.key === 'Escape') {
+                              setIsJumpOpen(false);
+                              setJumpPageInput('');
+                            }
+                          }}
+                          onBlur={() => {
+                            if (!jumpPageInput.trim()) {
+                              setIsJumpOpen(false);
+                            }
+                          }}
+                          placeholder="#"
+                          className="w-12 h-8 px-1 text-center rounded-lg border-2 border-[#ba1414] bg-white text-xs sm:text-sm font-bold text-gray-900 focus:outline-none shadow-xs"
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsJumpOpen(true);
+                            setJumpPageInput('');
+                          }}
+                          title="Nhập số trang để chuyển nhanh"
+                          className="w-8 h-8 rounded-lg text-xs sm:text-sm font-bold transition-colors bg-white border border-gray-300 text-gray-700 hover:bg-gray-100 hover:border-[#ba1414] hover:text-[#ba1414] cursor-pointer flex items-center justify-center shadow-2xs"
+                        >
+                          ...
+                        </button>
+                      )
+                    )}
+
+                    {trailingPages.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => handlePageChange(p)}
+                        className={`w-8 h-8 rounded-lg text-xs sm:text-sm font-semibold transition-colors cursor-pointer ${
+                          urlPage === p
+                            ? 'bg-[#ba1414] text-white shadow-xs'
+                            : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </>
+                );
+              })()
+            )}
 
             <button
               type="button"
               disabled={urlPage >= totalPages}
               onClick={() => handlePageChange(urlPage + 1)}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
               <span>Sau</span>
               <ChevronRight className="w-4 h-4" />

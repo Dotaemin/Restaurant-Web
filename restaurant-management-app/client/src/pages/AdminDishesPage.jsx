@@ -1,13 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
 import LoadHandler from '../components/LoadHandler';
-import { Plus, Edit2, Trash2, AlertCircle, CheckCircle2, XCircle, Utensils, ChefHat, Filter, ArrowUpDown, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
+import PaginationBar from '../components/PaginationBar';
+import ChefSelectModal from '../components/ChefSelectModal';
+import IngredientSelectModal from '../components/IngredientSelectModal';
+import { Plus, Edit2, Trash2, AlertCircle, CheckCircle2, XCircle, Utensils, ChefHat, Filter, ArrowUpDown, ChevronLeft, ChevronRight, RotateCcw, X } from 'lucide-react';
 
 const CATEGORIES = ['Main Course', 'Appetizer', 'Dessert', 'Beverage'];
 
 export default function AdminDishesPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlPage = parseInt(searchParams.get('page') || '1', 10);
+  const currentPage = urlPage > 0 ? urlPage : 1;
 
   // Page local state
   const [dishes, setDishes] = useState([]);
@@ -20,14 +26,19 @@ export default function AdminDishesPage() {
   const [errorBanner, setErrorBanner] = useState('');
 
   // Server-Side Pagination state (PageSize = 20)
-  const [currentPage, setCurrentPage] = useState(1);
   const [totalDishes, setTotalDishes] = useState(0);
 
   // Client-Side Filter State (Admin pages ONLY)
   const [filterCategory, setFilterCategory] = useState('All');
-  const [filterIngredientId, setFilterIngredientId] = useState('All');
+  const [filterIngredientIds, setFilterIngredientIds] = useState([]);
   const [filterChefId, setFilterChefId] = useState('All');
   const [filterStatus, setFilterStatus] = useState('All'); // 'All' | 'available' | 'soldout'
+
+  // Modal State for Chef & Ingredient Selection
+  const [isFormChefModalOpen, setIsFormChefModalOpen] = useState(false);
+  const [isFormIngModalOpen, setIsFormIngModalOpen] = useState(false);
+  const [isFilterChefModalOpen, setIsFilterChefModalOpen] = useState(false);
+  const [isFilterIngModalOpen, setIsFilterIngModalOpen] = useState(false);
 
   // Client-Side Sort State (Admin pages ONLY)
   const [sortOption, setSortOption] = useState('name-asc');
@@ -56,8 +67,8 @@ export default function AdminDishesPage() {
         page: pageToLoad,
         pageSize: 20,
         category: filterCategory,
-        chefId: filterChefId,
-        ingredientId: filterIngredientId,
+        chefId: filterChefId !== 'All' ? filterChefId : undefined,
+        ingredientId: filterIngredientIds.length === 1 ? filterIngredientIds[0] : undefined,
         available: filterStatus === 'available' ? 'true' : filterStatus === 'soldout' ? 'false' : undefined,
         sortBy: field,
         sortOrder: dir
@@ -75,11 +86,6 @@ export default function AdminDishesPage() {
       }
       if (chefsRes.ok) setChefs(chefsRes.data?.items || chefsRes.data || []);
       if (ingredientsRes.ok) setIngredients(ingredientsRes.data?.items || ingredientsRes.data || []);
-
-      if (chefsRes.ok && (chefsRes.data?.items || chefsRes.data)?.length > 0 && !formData.chefId) {
-        const firstChefId = (chefsRes.data?.items || chefsRes.data)[0].id;
-        setFormData((prev) => ({ ...prev, chefId: firstChefId }));
-      }
     } catch (err) {
       setErrorBanner('Failed to load dishes and metadata.');
     } finally {
@@ -89,7 +95,7 @@ export default function AdminDishesPage() {
 
   useEffect(() => {
     loadData(currentPage);
-  }, [currentPage, filterCategory, filterIngredientId, filterChefId, filterStatus, sortOption]);
+  }, [currentPage, filterCategory, filterIngredientIds, filterChefId, filterStatus, sortOption]);
 
   // Client-Side Filtering & Sorting computation (per spec: "Filter and sort must be client side")
   const filteredAndSortedDishes = useMemo(() => {
@@ -99,10 +105,11 @@ export default function AdminDishesPage() {
     if (filterCategory !== 'All') {
       result = result.filter((d) => d.category === filterCategory);
     }
-    // Filter by Ingredient
-    if (filterIngredientId !== 'All') {
-      const ingIdNum = parseInt(filterIngredientId, 10);
-      result = result.filter((d) => d.ingredients?.some((i) => i.id === ingIdNum));
+    // Filter by Ingredients (must contain all chosen ingredients)
+    if (filterIngredientIds.length > 0) {
+      result = result.filter((d) =>
+        filterIngredientIds.every((selId) => d.ingredients?.some((i) => i.id === selId))
+      );
     }
     // Filter by Chef
     if (filterChefId !== 'All') {
@@ -142,17 +149,31 @@ export default function AdminDishesPage() {
     });
 
     return result;
-  }, [dishes, filterCategory, filterIngredientId, filterChefId, filterStatus, sortOption]);
+  }, [dishes, filterCategory, filterIngredientIds, filterChefId, filterStatus, sortOption]);
 
   const totalPages = Math.ceil(totalDishes / 20) || 1;
 
+  const handlePageChange = (newPage) => {
+    if (newPage < 1 || newPage > totalPages) return;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('page', String(newPage));
+      return next;
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleResetFilters = () => {
     setFilterCategory('All');
-    setFilterIngredientId('All');
+    setFilterIngredientIds([]);
     setFilterChefId('All');
     setFilterStatus('All');
     setSortOption('name-asc');
-    setCurrentPage(1);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('page', '1');
+      return next;
+    });
   };
 
   // Handle form input changes
@@ -300,7 +321,13 @@ export default function AdminDishesPage() {
 
         <button
           type="button"
-          onClick={() => setShowAddForm(!showAddForm)}
+          onClick={() => {
+            if (showAddForm) {
+              setIsFormChefModalOpen(false);
+              setIsFormIngModalOpen(false);
+            }
+            setShowAddForm(!showAddForm);
+          }}
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm text-white bg-[#ba1414] hover:bg-red-800 transition-all shadow-sm"
         >
           <Plus className="w-5 h-5" />
@@ -344,7 +371,7 @@ export default function AdminDishesPage() {
 
       {/* Add Dish Form (Collapsible) */}
       {showAddForm && (
-        <div className="bg-white rounded-2xl border-2 border-[#ba1414] p-6 shadow-md animate-in fade-in duration-200">
+        <div className="relative overflow-hidden bg-white rounded-2xl border-2 border-[#ba1414] p-6 shadow-md animate-in fade-in duration-200">
           <h2 className="text-xl font-bold text-[#ba1414] mb-4 flex items-center gap-2">
             <Utensils className="w-5 h-5" />
             <span>Add New Dish</span>
@@ -416,26 +443,48 @@ export default function AdminDishesPage() {
                 )}
               </div>
 
-              {/* Chef */}
+              {/* Chef Selection */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1">
                   Assigned Chef *
                 </label>
-                <select
-                  name="chefId"
-                  value={formData.chefId}
-                  onChange={handleInputChange}
-                  className={`w-full px-3.5 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-[#ba1414] bg-white ${
-                    fieldErrors.chefId ? 'border-red-500 bg-red-50' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="">Select Chef...</option>
-                  {chefs.map((chef) => (
-                    <option key={chef.id} value={chef.id}>
-                      {chef.name} ({chef.specialty})
-                    </option>
-                  ))}
-                </select>
+                {formData.chefId ? (
+                  (() => {
+                    const selectedChef = chefs.find(
+                      (c) => c.id === (typeof formData.chefId === 'number' ? formData.chefId : parseInt(formData.chefId, 10))
+                    );
+                    return (
+                      <div className="w-full px-3.5 py-2.5 rounded-xl border border-[#ba1414] bg-red-50 text-[#ba1414] text-sm font-semibold flex items-center justify-between shadow-2xs">
+                        <span className="truncate pr-2">
+                          {selectedChef?.name || `Chef #${formData.chefId}`}
+                          {selectedChef?.specialty ? ` (${selectedChef.specialty})` : ''}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setFormData((prev) => ({ ...prev, chefId: '' }))}
+                          className="text-[#ba1414] hover:text-red-900 p-0.5 rounded cursor-pointer shrink-0"
+                          title="Clear selection"
+                          aria-label="Clear chef selection"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsFormChefModalOpen(true)}
+                    className={`w-full px-3.5 py-2.5 rounded-xl border text-sm text-left flex items-center justify-between transition-colors bg-white cursor-pointer ${
+                      fieldErrors.chefId
+                        ? 'border-red-500 bg-red-50 text-red-700'
+                        : 'border-gray-300 text-gray-700 hover:border-[#ba1414]'
+                    }`}
+                  >
+                    <span>Select Chef</span>
+                    <ChevronRight className="w-4 h-4 text-gray-400" />
+                  </button>
+                )}
                 {fieldErrors.chefId && (
                   <p className="text-xs text-red-600 font-medium mt-1">{fieldErrors.chefId}</p>
                 )}
@@ -497,37 +546,49 @@ export default function AdminDishesPage() {
 
               {/* Ingredients Selection */}
               <div className="md:col-span-2">
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-2">
-                  Ingredients * (Choose at least one)
-                </label>
-                {ingredients.length === 0 ? (
-                  <p className="text-xs text-amber-600">
-                    No ingredients found. Please add ingredients in Manage Ingredients first.
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-48 overflow-y-auto p-3 border border-gray-200 rounded-xl bg-gray-50">
-                    {ingredients.map((ing) => {
-                      const checked = formData.ingredientIds.includes(ing.id);
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                    Ingredients * (Choose at least one)
+                  </label>
+                  {formData.ingredientIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsFormIngModalOpen(true)}
+                      className="text-xs font-bold text-[#ba1414] hover:underline cursor-pointer"
+                    >
+                      Edit selection
+                    </button>
+                  )}
+                </div>
+
+                {formData.ingredientIds.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-36 overflow-y-auto p-2.5 border border-gray-200 rounded-xl bg-gray-50">
+                    {formData.ingredientIds.map((id) => {
+                      const ing = ingredients.find((i) => i.id === id);
                       return (
-                        <label
-                          key={ing.id}
-                          className={`flex items-center gap-2 p-2 rounded-lg text-xs font-medium border cursor-pointer transition-colors ${
-                            checked
-                              ? 'bg-red-50 border-[#ba1414] text-[#ba1414]'
-                              : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100'
-                          }`}
+                        <div
+                          key={id}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white border border-[#ba1414] text-[#ba1414] shadow-2xs truncate"
                         >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => handleIngredientToggle(ing.id)}
-                            className="rounded text-[#ba1414] focus:ring-[#ba1414]"
-                          />
-                          <span className="truncate">{ing.name} ({ing.unit})</span>
-                        </label>
+                          <span className="truncate">{ing?.name || `Ingredient #${id}`}</span>
+                          {ing?.unit && <span className="text-[10px] text-gray-500 font-normal">({ing.unit})</span>}
+                        </div>
                       );
                     })}
                   </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsFormIngModalOpen(true)}
+                    className={`w-full px-3.5 py-2.5 rounded-xl border text-sm text-left flex items-center justify-between transition-colors bg-white cursor-pointer ${
+                      fieldErrors.ingredientIds
+                        ? 'border-red-500 bg-red-50 text-red-700'
+                        : 'border-gray-300 text-gray-700 hover:border-[#ba1414]'
+                    }`}
+                  >
+                    <span>Select Ingredients</span>
+                    <ChevronRight className="w-4 h-4 text-gray-400" />
+                  </button>
                 )}
                 {fieldErrors.ingredientIds && (
                   <p className="text-xs text-red-600 font-medium mt-1">{fieldErrors.ingredientIds}</p>
@@ -539,7 +600,11 @@ export default function AdminDishesPage() {
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
               <button
                 type="button"
-                onClick={() => setShowAddForm(false)}
+                onClick={() => {
+                  setIsFormChefModalOpen(false);
+                  setIsFormIngModalOpen(false);
+                  setShowAddForm(false);
+                }}
                 className="px-4 py-2.5 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
               >
                 Cancel
@@ -552,6 +617,43 @@ export default function AdminDishesPage() {
               </button>
             </div>
           </form>
+
+          {/* Form Context Modals: Confined to form window */}
+          <ChefSelectModal
+            isOpen={isFormChefModalOpen}
+            onClose={() => setIsFormChefModalOpen(false)}
+            onSelect={(id) => {
+              setFormData((prev) => ({ ...prev, chefId: id }));
+              if (fieldErrors.chefId) {
+                setFieldErrors((prev) => {
+                  const next = { ...prev };
+                  delete next.chefId;
+                  return next;
+                });
+              }
+            }}
+            selectedChefId={formData.chefId}
+            chefs={chefs}
+            isForm={true}
+          />
+
+          <IngredientSelectModal
+            isOpen={isFormIngModalOpen}
+            onClose={() => setIsFormIngModalOpen(false)}
+            onSelect={(ids) => {
+              setFormData((prev) => ({ ...prev, ingredientIds: ids }));
+              if (fieldErrors.ingredientIds) {
+                setFieldErrors((prev) => {
+                  const next = { ...prev };
+                  delete next.ingredientIds;
+                  return next;
+                });
+              }
+            }}
+            selectedIngredientIds={formData.ingredientIds}
+            ingredients={ingredients}
+            isForm={true}
+          />
         </div>
       )}
 
@@ -560,7 +662,7 @@ export default function AdminDishesPage() {
         <div className="flex items-center justify-between pb-2 border-b border-gray-100 flex-wrap gap-2">
           <div className="flex items-center gap-2 text-xs font-bold text-gray-700 uppercase tracking-wider">
             <Filter className="w-4 h-4 text-[#ba1414]" />
-            <span>Bộ lọc & Sắp xếp (Client-Side)</span>
+            <span>Bộ lọc & Sắp xếp</span>
           </div>
           <button
             type="button"
@@ -580,7 +682,11 @@ export default function AdminDishesPage() {
               value={filterCategory}
               onChange={(e) => {
                 setFilterCategory(e.target.value);
-                setCurrentPage(1);
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.set('page', '1');
+                  return next;
+                });
               }}
               className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded-lg p-2 text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#ba1414]"
             >
@@ -594,37 +700,69 @@ export default function AdminDishesPage() {
           {/* Ingredient Filter */}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Nguyên liệu</label>
-            <select
-              value={filterIngredientId}
-              onChange={(e) => {
-                setFilterIngredientId(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded-lg p-2 text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#ba1414]"
-            >
-              <option value="All">Tất cả nguyên liệu</option>
-              {ingredients.map((ing) => (
-                <option key={ing.id} value={ing.id}>{ing.name}</option>
-              ))}
-            </select>
+            {filterIngredientIds.length > 0 ? (
+              <div className="w-full text-xs font-semibold bg-red-50 border border-[#ba1414] text-[#ba1414] rounded-lg p-2 flex items-center justify-between shadow-2xs">
+                <span className="truncate pr-1">
+                  {filterIngredientIds.length} {filterIngredientIds.length === 1 ? 'nguyên liệu' : 'nguyên liệu'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsFilterIngModalOpen(true)}
+                  className="text-[#ba1414] font-bold hover:underline shrink-0 ml-1 cursor-pointer"
+                >
+                  Edit
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsFilterIngModalOpen(true)}
+                className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded-lg p-2 text-gray-700 hover:border-[#ba1414] hover:text-[#ba1414] transition-colors flex items-center justify-between cursor-pointer"
+              >
+                <span>Select Ingredients</span>
+                <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+              </button>
+            )}
           </div>
 
           {/* Chef Filter */}
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Đầu bếp</label>
-            <select
-              value={filterChefId}
-              onChange={(e) => {
-                setFilterChefId(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded-lg p-2 text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#ba1414]"
-            >
-              <option value="All">Tất cả đầu bếp</option>
-              {chefs.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+            {filterChefId !== 'All' ? (
+              (() => {
+                const selectedChef = chefs.find((c) => c.id === parseInt(filterChefId, 10));
+                return (
+                  <div className="w-full text-xs font-semibold bg-red-50 border border-[#ba1414] text-[#ba1414] rounded-lg p-2 flex items-center justify-between shadow-2xs">
+                    <span className="truncate pr-1">{selectedChef?.name || 'Chef'}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilterChefId('All');
+                        setSearchParams((prev) => {
+                          const next = new URLSearchParams(prev);
+                          next.set('page', '1');
+                          return next;
+                        });
+                      }}
+                      className="text-[#ba1414] hover:text-red-900 p-0.5 rounded cursor-pointer shrink-0"
+                      title="Clear chef filter"
+                      aria-label="Clear chef filter"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })()
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsFilterChefModalOpen(true)}
+                className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded-lg p-2 text-gray-700 hover:border-[#ba1414] hover:text-[#ba1414] transition-colors flex items-center justify-between cursor-pointer"
+              >
+                <span>Select Chef</span>
+                <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+              </button>
+            )}
           </div>
 
           {/* Status Filter */}
@@ -634,7 +772,11 @@ export default function AdminDishesPage() {
               value={filterStatus}
               onChange={(e) => {
                 setFilterStatus(e.target.value);
-                setCurrentPage(1);
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.set('page', '1');
+                  return next;
+                });
               }}
               className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded-lg p-2 text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#ba1414]"
             >
@@ -652,7 +794,11 @@ export default function AdminDishesPage() {
                 value={sortOption}
                 onChange={(e) => {
                   setSortOption(e.target.value);
-                  setCurrentPage(1);
+                  setSearchParams((prev) => {
+                    const next = new URLSearchParams(prev);
+                    next.set('page', '1');
+                    return next;
+                  });
                 }}
                 className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded-lg p-2 text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#ba1414]"
               >
@@ -712,8 +858,8 @@ export default function AdminDishesPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="py-3.5 px-4">
-                    <span className="inline-block px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800">
+                  <td className="py-3.5 px-4 whitespace-nowrap">
+                    <span className="inline-block px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800 whitespace-nowrap">
                       {dish.category}
                     </span>
                   </td>
@@ -799,7 +945,7 @@ export default function AdminDishesPage() {
                     </span>
                   </div>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 whitespace-nowrap">
                       {dish.category}
                     </span>
                     {dish.available ? (
@@ -846,66 +992,46 @@ export default function AdminDishesPage() {
       </div>
 
       {/* Server-Side Pagination Bar (Admin PageSize = 20) */}
-      {totalPages > 1 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-gray-200">
-          <div className="text-xs sm:text-sm text-gray-600">
-            Trang <span className="font-bold text-gray-900">{currentPage}</span> / <span className="font-bold text-gray-900">{totalPages}</span> (Tổng số: {totalDishes} món)
-          </div>
+      <PaginationBar
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalCount={totalDishes}
+        itemLabel="món"
+        onPageChange={handlePageChange}
+      />
 
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              disabled={currentPage <= 1}
-              onClick={() => {
-                setCurrentPage((p) => p - 1);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              <span>Trước</span>
-            </button>
+      {/* Non-Form Context Modals (For Filters): Affects whole page except top bar */}
+      <ChefSelectModal
+        isOpen={isFilterChefModalOpen}
+        onClose={() => setIsFilterChefModalOpen(false)}
+        onSelect={(id) => {
+          setFilterChefId(String(id));
+          setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.set('page', '1');
+            return next;
+          });
+        }}
+        selectedChefId={filterChefId === 'All' ? null : filterChefId}
+        chefs={chefs}
+        isForm={false}
+      />
 
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              let p;
-              if (totalPages <= 5) p = i + 1;
-              else if (currentPage <= 3) p = i + 1;
-              else if (currentPage >= totalPages - 2) p = totalPages - 4 + i;
-              else p = currentPage - 2 + i;
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => {
-                    setCurrentPage(p);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className={`w-8 h-8 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
-                    currentPage === p
-                      ? 'bg-[#ba1414] text-white shadow-xs'
-                      : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  {p}
-                </button>
-              );
-            })}
-
-            <button
-              type="button"
-              disabled={currentPage >= totalPages}
-              onClick={() => {
-                setCurrentPage((p) => p + 1);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <span>Sau</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      <IngredientSelectModal
+        isOpen={isFilterIngModalOpen}
+        onClose={() => setIsFilterIngModalOpen(false)}
+        onSelect={(ids) => {
+          setFilterIngredientIds(ids);
+          setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.set('page', '1');
+            return next;
+          });
+        }}
+        selectedIngredientIds={filterIngredientIds}
+        ingredients={ingredients}
+        isForm={false}
+      />
     </div>
   );
 }

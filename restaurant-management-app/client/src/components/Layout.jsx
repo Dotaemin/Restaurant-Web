@@ -24,7 +24,7 @@ export default function Layout({ children }) {
   return (
     <div className="min-h-screen flex flex-col bg-[#f5f5f5] text-gray-900">
       {/* Top Navigation Header */}
-      <header className="sticky top-0 z-30 bg-[#ba1414] text-[#f5f5f5] shadow-md border-b border-red-900">
+      <header className="sticky top-0 z-40 bg-[#ba1414] text-[#f5f5f5] shadow-md border-b border-red-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Brand Logo & Name */}

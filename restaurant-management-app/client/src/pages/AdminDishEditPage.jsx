@@ -3,7 +3,9 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../api/client';
 import LoadHandler from '../components/LoadHandler';
 import NotFoundPage from './NotFoundPage';
-import { ArrowLeft, Edit2, AlertCircle } from 'lucide-react';
+import ChefSelectModal from '../components/ChefSelectModal';
+import IngredientSelectModal from '../components/IngredientSelectModal';
+import { ArrowLeft, Edit2, AlertCircle, ChevronRight, X } from 'lucide-react';
 
 const CATEGORIES = ['Main Course', 'Appetizer', 'Dessert', 'Beverage'];
 
@@ -19,6 +21,10 @@ export default function AdminDishEditPage() {
 
   const [chefs, setChefs] = useState([]);
   const [ingredients, setIngredients] = useState([]);
+
+  // Modal State for Chef & Ingredient Selection
+  const [isChefModalOpen, setIsChefModalOpen] = useState(false);
+  const [isIngModalOpen, setIsIngModalOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -209,7 +215,7 @@ export default function AdminDishEditPage() {
       )}
 
       {/* Edit Form Card */}
-      <div className="bg-white rounded-3xl border-2 border-[#ba1414] p-6 sm:p-8 shadow-xl">
+      <div className="relative overflow-hidden bg-white rounded-3xl border-2 border-[#ba1414] p-6 sm:p-8 shadow-xl">
         <div className="flex items-center gap-3 pb-4 border-b border-gray-200 mb-6">
           <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center text-[#ba1414]">
             <Edit2 className="w-5 h-5" />
@@ -288,26 +294,48 @@ export default function AdminDishEditPage() {
               )}
             </div>
 
-            {/* Chef */}
+            {/* Chef Selection */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1">
                 Assigned Chef *
               </label>
-              <select
-                name="chefId"
-                value={formData.chefId}
-                onChange={handleInputChange}
-                className={`w-full px-3.5 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-[#ba1414] bg-white ${
-                  fieldErrors.chefId ? 'border-red-500 bg-red-50' : 'border-gray-300'
-                }`}
-              >
-                <option value="">Select Chef...</option>
-                {chefs.map((chef) => (
-                  <option key={chef.id} value={chef.id}>
-                    {chef.name} ({chef.specialty})
-                  </option>
-                ))}
-              </select>
+              {formData.chefId ? (
+                (() => {
+                  const selectedChef = chefs.find(
+                    (c) => c.id === (typeof formData.chefId === 'number' ? formData.chefId : parseInt(formData.chefId, 10))
+                  );
+                  return (
+                    <div className="w-full px-3.5 py-2.5 rounded-xl border border-[#ba1414] bg-red-50 text-[#ba1414] text-sm font-semibold flex items-center justify-between shadow-2xs">
+                      <span className="truncate pr-2">
+                        {selectedChef?.name || `Chef #${formData.chefId}`}
+                        {selectedChef?.specialty ? ` (${selectedChef.specialty})` : ''}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setFormData((prev) => ({ ...prev, chefId: '' }))}
+                        className="text-[#ba1414] hover:text-red-900 p-0.5 rounded cursor-pointer shrink-0"
+                        title="Clear selection"
+                        aria-label="Clear chef selection"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })()
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsChefModalOpen(true)}
+                  className={`w-full px-3.5 py-2.5 rounded-xl border text-sm text-left flex items-center justify-between transition-colors bg-white cursor-pointer ${
+                    fieldErrors.chefId
+                      ? 'border-red-500 bg-red-50 text-red-700'
+                      : 'border-gray-300 text-gray-700 hover:border-[#ba1414]'
+                  }`}
+                >
+                  <span>Select Chef</span>
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                </button>
+              )}
               {fieldErrors.chefId && (
                 <p className="text-xs text-red-600 font-medium mt-1">{fieldErrors.chefId}</p>
               )}
@@ -369,32 +397,50 @@ export default function AdminDishEditPage() {
 
             {/* Ingredients Selection */}
             <div className="md:col-span-2">
-              <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-2">
-                Ingredients * (Select at least one)
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-48 overflow-y-auto p-3 border border-gray-200 rounded-xl bg-gray-50">
-                {ingredients.map((ing) => {
-                  const checked = formData.ingredientIds.includes(ing.id);
-                  return (
-                    <label
-                      key={ing.id}
-                      className={`flex items-center gap-2 p-2 rounded-lg text-xs font-medium border cursor-pointer transition-colors ${
-                        checked
-                          ? 'bg-red-50 border-[#ba1414] text-[#ba1414]'
-                          : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-100'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => handleIngredientToggle(ing.id)}
-                        className="rounded text-[#ba1414] focus:ring-[#ba1414]"
-                      />
-                      <span className="truncate">{ing.name} ({ing.unit})</span>
-                    </label>
-                  );
-                })}
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                  Ingredients * (Select at least one)
+                </label>
+                {formData.ingredientIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setIsIngModalOpen(true)}
+                    className="text-xs font-bold text-[#ba1414] hover:underline cursor-pointer"
+                  >
+                    Edit selection
+                  </button>
+                )}
               </div>
+
+              {formData.ingredientIds.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-36 overflow-y-auto p-2.5 border border-gray-200 rounded-xl bg-gray-50">
+                  {formData.ingredientIds.map((id) => {
+                    const ing = ingredients.find((i) => i.id === id);
+                    return (
+                      <div
+                        key={id}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white border border-[#ba1414] text-[#ba1414] shadow-2xs truncate"
+                      >
+                        <span className="truncate">{ing?.name || `Ingredient #${id}`}</span>
+                        {ing?.unit && <span className="text-[10px] text-gray-500 font-normal">({ing.unit})</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsIngModalOpen(true)}
+                  className={`w-full px-3.5 py-2.5 rounded-xl border text-sm text-left flex items-center justify-between transition-colors bg-white cursor-pointer ${
+                    fieldErrors.ingredientIds
+                      ? 'border-red-500 bg-red-50 text-red-700'
+                      : 'border-gray-300 text-gray-700 hover:border-[#ba1414]'
+                  }`}
+                >
+                  <span>Select Ingredients</span>
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                </button>
+              )}
               {fieldErrors.ingredientIds && (
                 <p className="text-xs text-red-600 font-medium mt-1">{fieldErrors.ingredientIds}</p>
               )}
@@ -417,6 +463,43 @@ export default function AdminDishEditPage() {
             </button>
           </div>
         </form>
+
+        {/* Form Context Modals: Confined to form window */}
+        <ChefSelectModal
+          isOpen={isChefModalOpen}
+          onClose={() => setIsChefModalOpen(false)}
+          onSelect={(chefId) => {
+            setFormData((prev) => ({ ...prev, chefId }));
+            if (fieldErrors.chefId) {
+              setFieldErrors((prev) => {
+                const next = { ...prev };
+                delete next.chefId;
+                return next;
+              });
+            }
+          }}
+          selectedChefId={formData.chefId}
+          chefs={chefs}
+          isForm={true}
+        />
+
+        <IngredientSelectModal
+          isOpen={isIngModalOpen}
+          onClose={() => setIsIngModalOpen(false)}
+          onSelect={(ingredientIds) => {
+            setFormData((prev) => ({ ...prev, ingredientIds }));
+            if (fieldErrors.ingredientIds) {
+              setFieldErrors((prev) => {
+                const next = { ...prev };
+                delete next.ingredientIds;
+                return next;
+              });
+            }
+          }}
+          selectedIngredientIds={formData.ingredientIds}
+          ingredients={ingredients}
+          isForm={true}
+        />
       </div>
     </div>
   );

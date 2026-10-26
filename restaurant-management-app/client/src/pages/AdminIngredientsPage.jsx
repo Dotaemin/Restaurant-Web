@@ -1,11 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../api/client';
 import LoadHandler from '../components/LoadHandler';
+import PaginationBar from '../components/PaginationBar';
 import { Plus, Edit2, Trash2, AlertCircle, CheckCircle2, Carrot, Filter, ArrowUpDown, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 
 const ALLOWED_UNITS = ['kg', 'g', 'ml', 'l', 'tbsp', 'pcs', 'bunches'];
 
 export default function AdminIngredientsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlPage = parseInt(searchParams.get('page') || '1', 10);
+  const currentPage = urlPage > 0 ? urlPage : 1;
+
   const [ingredients, setIngredients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -14,7 +20,6 @@ export default function AdminIngredientsPage() {
   const [errorBanner, setErrorBanner] = useState('');
 
   // Server-Side Pagination state (PageSize = 20)
-  const [currentPage, setCurrentPage] = useState(1);
   const [totalIngredients, setTotalIngredients] = useState(0);
 
   // Client-Side Filter & Sort State (Admin pages ONLY)
@@ -30,21 +35,26 @@ export default function AdminIngredientsPage() {
   const loadIngredients = async (pageToLoad = currentPage) => {
     setLoading(true);
     setErrorBanner('');
-    const [field, dir] = sortOption.split('-');
-    const res = await api.getIngredients({
-      page: pageToLoad,
-      pageSize: 20,
-      unit: filterUnit,
-      sortBy: field,
-      sortOrder: dir
-    });
-    if (res.ok) {
-      setIngredients(res.data?.items || []);
-      setTotalIngredients(res.data?.meta?.total || 0);
-    } else {
-      setErrorBanner(res.error?.message || 'Failed to load ingredients.');
+    try {
+      const [field, dir] = sortOption.split('-');
+      const res = await api.getIngredients({
+        page: pageToLoad,
+        pageSize: 20,
+        unit: filterUnit,
+        sortBy: field,
+        sortOrder: dir
+      });
+      if (res.ok) {
+        setIngredients(res.data?.items || []);
+        setTotalIngredients(res.data?.meta?.total || 0);
+      } else {
+        setErrorBanner(res.error?.message || 'Failed to load ingredients.');
+      }
+    } catch (err) {
+      setErrorBanner('Failed to load ingredients.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -70,10 +80,24 @@ export default function AdminIngredientsPage() {
 
   const totalPages = Math.ceil(totalIngredients / 20) || 1;
 
+  const handlePageChange = (newPage) => {
+    if (newPage < 1 || newPage > totalPages) return;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('page', String(newPage));
+      return next;
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleResetFilters = () => {
     setFilterUnit('All');
     setSortOption('name-asc');
-    setCurrentPage(1);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('page', '1');
+      return next;
+    });
   };
 
   const handleInputChange = (e) => {
@@ -319,7 +343,7 @@ export default function AdminIngredientsPage() {
         <div className="flex items-center justify-between pb-2 border-b border-gray-100 flex-wrap gap-2">
           <div className="flex items-center gap-2 text-xs font-bold text-gray-700 uppercase tracking-wider">
             <Filter className="w-4 h-4 text-[#ba1414]" />
-            <span>Bộ lọc & Sắp xếp (Client-Side)</span>
+            <span>Bộ lọc & Sắp xếp</span>
           </div>
           <button
             type="button"
@@ -339,7 +363,11 @@ export default function AdminIngredientsPage() {
               value={filterUnit}
               onChange={(e) => {
                 setFilterUnit(e.target.value);
-                setCurrentPage(1);
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.set('page', '1');
+                  return next;
+                });
               }}
               className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded-lg p-2 text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#ba1414]"
             >
@@ -357,7 +385,11 @@ export default function AdminIngredientsPage() {
               value={sortOption}
               onChange={(e) => {
                 setSortOption(e.target.value);
-                setCurrentPage(1);
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.set('page', '1');
+                  return next;
+                });
               }}
               className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded-lg p-2 text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#ba1414]"
             >
@@ -512,66 +544,13 @@ export default function AdminIngredientsPage() {
       </div>
 
       {/* Server-Side Pagination Bar (Admin PageSize = 20) */}
-      {totalPages > 1 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-gray-200">
-          <div className="text-xs sm:text-sm text-gray-600">
-            Trang <span className="font-bold text-gray-900">{currentPage}</span> / <span className="font-bold text-gray-900">{totalPages}</span> (Tổng số: {totalIngredients} nguyên liệu)
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              disabled={currentPage <= 1}
-              onClick={() => {
-                setCurrentPage((p) => p - 1);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              <span>Trước</span>
-            </button>
-
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              let p;
-              if (totalPages <= 5) p = i + 1;
-              else if (currentPage <= 3) p = i + 1;
-              else if (currentPage >= totalPages - 2) p = totalPages - 4 + i;
-              else p = currentPage - 2 + i;
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => {
-                    setCurrentPage(p);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className={`w-8 h-8 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
-                    currentPage === p
-                      ? 'bg-[#ba1414] text-white shadow-xs'
-                      : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  {p}
-                </button>
-              );
-            })}
-
-            <button
-              type="button"
-              disabled={currentPage >= totalPages}
-              onClick={() => {
-                setCurrentPage((p) => p + 1);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <span>Sau</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      <PaginationBar
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalCount={totalIngredients}
+        itemLabel="nguyên liệu"
+        onPageChange={handlePageChange}
+      />
     </div>
   );
 }
