@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-[#f5f5f5]">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= typeof title !== 'undefined' ? title : '404 - Not Found' %> | B.H.T Diner</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="min-h-full flex flex-col font-sans text-slate-800 bg-[#f5f5f5] antialiased p-4 sm:p-6 lg:p-8">
+
+  <!-- Top Navigation Bar with Button in the Top Left Corner -->
+  <header class="w-full max-w-5xl mx-auto flex items-center justify-between mb-8">
+    <!-- Required: Button in top left corner redirecting user back to /dishes -->
+    <a href="/dishes" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#ba1414] hover:bg-[#991010] text-[#f5f5f5] font-bold text-sm shadow-md shadow-[#ba1414]/20 transition-all">
+      <span class="text-base">&larr;</span> Back to Menu (/dishes)
+    </a>
+
+    <!-- Brand Label -->
+    <div class="flex items-center gap-2 text-xs font-black text-[#ba1414] tracking-wider uppercase">
+      <span class="w-2.5 h-2.5 rounded-full bg-[#ba1414]"></span>
+      B.H.T Diner
+    </div>
+  </header>
+
+  <!-- Main Error Card -->
+  <main class="flex-1 flex items-center justify-center w-full max-w-2xl mx-auto py-6">
+    <div class="w-full bg-white rounded-3xl border border-[#ba1414]/20 shadow-xl shadow-[#ba1414]/5 p-8 sm:p-12 text-center">
+      
+      <!-- Icon & Status Pill -->
+      <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-[#ba1414]/10 text-[#ba1414] font-black text-3xl mb-6 shadow-inner border border-[#ba1414]/20">
+        404
+      </div>
+
+      <div>
+        <span class="inline-block px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest bg-[#ba1414]/10 text-[#ba1414] mb-3">
+          Page Not Found
+        </span>
+        <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+          Resource Unavailable
+        </h1>
+      </div>
+
+      <!-- Error Explanation Box (Shows what the error is) -->
+      <div class="mt-6 p-4 sm:p-5 rounded-2xl bg-[#f5f5f5] border border-[#ba1414]/20 text-left">
+        <div class="text-xs font-bold text-[#ba1414] uppercase tracking-wider mb-1 flex items-center gap-1.5">
+          <span class="font-black">ℹ️</span> Error Details:
+        </div>
+        <p class="text-sm font-medium text-slate-800 break-words">
+          <%= typeof error !== 'undefined' && error ? error : 'The requested item or page could not be found.' %>
+        </p>
+      </div>
+
+      <!-- Action Footer -->
+      <div class="mt-8 pt-6 border-t border-slate-100 flex items-center justify-center">
+        <a href="/dishes" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-[#ba1414] hover:bg-[#991010] text-[#f5f5f5] font-bold text-sm shadow-md shadow-[#ba1414]/20 transition-all text-center">
+          Browse All Dishes &rarr;
+        </a>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Minimal Footer: Only Restaurant Name and Simple Copyright Line -->
+  <footer class="w-full max-w-5xl mx-auto text-center py-4 text-xs text-slate-500 font-medium">
+    &copy; <%= new Date().getFullYear() %> B.H.T Diner. All rights reserved.
+  </footer>
+
+</body>
+</html>

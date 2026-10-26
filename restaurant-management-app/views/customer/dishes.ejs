@@ -1,0 +1,135 @@
+<%- include('../layouts/header') %>
+
+<!-- Menu Header Section -->
+<section class="mb-8 border-b border-[#ba1414]/20 pb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+  <div>
+    <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#ba1414]/10 text-[#ba1414] mb-2">
+      🍴 Signature Culinary Collection
+    </span>
+    <h1 class="text-3xl sm:text-4xl font-black text-[#ba1414] tracking-tight">
+      B.H.T Diner Menu
+    </h1>
+    <p class="mt-1 text-sm text-slate-600 max-w-xl">
+      Carefully crafted recipes using fresh ingredients. Choose a category from the menu below to filter dishes.
+    </p>
+  </div>
+  <div class="text-xs font-bold text-[#ba1414] bg-white px-3.5 py-2 rounded-xl border border-[#ba1414]/30 shadow-2xs self-start sm:self-auto">
+    <%= dishes.length %> <%= dishes.length === 1 ? 'Dish' : 'Dishes' %> Listed
+  </div>
+</section>
+
+<!-- Category Selection Menu (Zero JS Native Dropdown Menu) -->
+<div class="mb-8">
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    
+    <!-- Category Menu Selector -->
+    <details class="relative inline-block w-full sm:w-auto group">
+      <summary class="list-none flex items-center justify-between gap-3 px-5 py-3 rounded-2xl border-2 border-[#ba1414] bg-white text-[#ba1414] font-bold text-sm shadow-xs cursor-pointer select-none hover:bg-[#ba1414]/5 transition-all">
+        <span class="flex items-center gap-2">
+          <span>🍽️ Category:</span>
+          <span class="font-extrabold text-slate-900 bg-[#ba1414]/10 px-2.5 py-0.5 rounded-lg"><%= selectedCategory || 'All' %></span>
+        </span>
+        <svg class="w-4 h-4 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path d="M19 9l-7 7-7-7"></path></svg>
+      </summary>
+      
+      <!-- Dropdown Menu Items -->
+      <div class="absolute left-0 mt-2 w-full sm:w-72 bg-white border-2 border-[#ba1414] rounded-2xl shadow-xl z-30 p-2 space-y-1">
+        <% const categories = ['All', 'Main Course', 'Appetizer', 'Dessert', 'Beverage']; %>
+        <% categories.forEach(cat => { %>
+          <% const isSelected = (typeof selectedCategory !== 'undefined' && selectedCategory === cat) || (cat === 'All' && (!selectedCategory || selectedCategory === 'All')); %>
+          <a 
+            href="/dishes<%= cat === 'All' ? '' : '?category=' + encodeURIComponent(cat) %>" 
+            class="category-pill flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-bold transition-colors <%= isSelected ? 'bg-[#ba1414] text-[#f5f5f5]' : 'text-slate-800 hover:bg-[#ba1414]/10 hover:text-[#ba1414]' %>"
+          >
+            <span><%= cat %></span>
+            <% if (isSelected) { %>
+              <span class="text-xs font-black">✓ Selected</span>
+            <% } %>
+          </a>
+        <% }) %>
+      </div>
+    </details>
+
+    <!-- Clear Filter Shortcut (Visible when filtered) -->
+    <% if (typeof selectedCategory !== 'undefined' && selectedCategory && selectedCategory !== 'All') { %>
+      <div class="flex items-center gap-2 self-start sm:self-auto">
+        <span class="text-xs text-slate-500 font-medium">Filtering by: <strong class="text-[#ba1414]"><%= selectedCategory %></strong></span>
+        <a href="/dishes" class="text-xs font-bold text-[#ba1414] hover:underline bg-[#ba1414]/10 px-2.5 py-1 rounded-lg">
+          ✕ Show All
+        </a>
+      </div>
+    <% } %>
+
+  </div>
+</div>
+
+<!-- Dish Buttons Grid: 2 Columns Below -->
+<% if (dishes && dishes.length > 0) { %>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <% dishes.forEach(dish => { %>
+      <!-- Dish Button: Rounded Rectangle, Food Photo spans full width of top edge, inner padding 16px -->
+      <a href="/dishes/<%= dish.id %>" class="dish-button dish-card group flex flex-col overflow-hidden shadow-2xs">
+        
+        <!-- Food photo spanning full width of card's top edge -->
+        <div class="w-full aspect-16/10 sm:aspect-16/9 overflow-hidden bg-slate-200 border-b border-[#ba1414]/15 relative shrink-0">
+          <img 
+            src="<%= dish.imageUrl %>" 
+            alt="<%= dish.name %>"
+            loading="lazy"
+            class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          >
+          <!-- Category badge on photo -->
+          <span class="absolute top-3 right-3 text-2xs font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-full bg-[#f5f5f5]/95 text-[#ba1414] border border-[#ba1414]/30 shadow-xs backdrop-blur-xs">
+            <%= dish.category %>
+          </span>
+        </div>
+
+        <!-- Inner Content Area with padding: 16px (p-4) -->
+        <div class="p-4 flex-1 flex flex-col justify-between" style="padding: 16px;">
+          <div>
+            <h2 class="text-lg sm:text-xl font-black text-[#ba1414] leading-snug">
+              <%= dish.name %>
+            </h2>
+            
+            <!-- Lowered body description font size slightly (text-xs) -->
+            <p class="mt-2 text-xs leading-relaxed text-slate-600 break-words whitespace-normal">
+              <%= dish.description %>
+            </p>
+          </div>
+
+          <!-- Bottom Row: Chef name & Price tag (well spaced, never touches bottom border) -->
+          <div class="mt-4 pt-3 border-t border-[#ba1414]/15 flex items-center justify-between">
+            <span class="text-xs text-slate-500 font-medium truncate">
+              👨‍🍳 <%= dish.chef ? dish.chef.name : 'Executive Chef' %>
+            </span>
+            <div class="text-lg font-black text-[#ba1414] shrink-0">
+              $<%= dish.price.toFixed(2) %>
+            </div>
+          </div>
+        </div>
+
+      </a>
+    <% }) %>
+  </div>
+<% } else { %>
+  <!-- Empty State -->
+  <div class="text-center py-16 bg-white rounded-3xl border border-dashed border-[#ba1414]/30 p-8 shadow-xs">
+    <div class="w-16 h-16 rounded-full bg-[#ba1414]/10 text-[#ba1414] mx-auto flex items-center justify-center text-3xl mb-4">
+      🍽️
+    </div>
+    <h3 class="text-xl font-bold text-[#ba1414]">No dishes found in this category</h3>
+    <p class="mt-2 text-sm text-slate-500 max-w-md mx-auto">
+      No items match the selected category. View all dishes or add items through the admin management panel.
+    </p>
+    <div class="mt-6 flex items-center justify-center gap-3">
+      <a href="/dishes" class="inline-flex items-center px-4 py-2 rounded-xl bg-[#ba1414] hover:bg-[#991010] text-[#f5f5f5] font-bold text-sm shadow-md shadow-[#ba1414]/20 transition-all">
+        View All Dishes
+      </a>
+      <a href="/admin/dishes" class="inline-flex items-center px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm transition-all">
+        Admin Panel
+      </a>
+    </div>
+  </div>
+<% } %>
+
+<%- include('../layouts/footer') %>

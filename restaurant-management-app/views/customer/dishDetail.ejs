@@ -1,0 +1,139 @@
+<%- include('../layouts/header') %>
+
+<!-- Transition Banner Compatibility Hook -->
+<div class="blue-wipe-banner" aria-hidden="true"></div>
+
+<!-- Dish Details View with Pull Entrance Transition -->
+<div class="blue-transition-container max-w-5xl mx-auto">
+
+  <!-- Back Link -->
+  <div class="mb-6">
+    <a href="/dishes" class="inline-flex items-center gap-2 text-sm font-bold text-[#ba1414] hover:text-[#991010] transition-colors bg-white px-4 py-2 rounded-xl border border-[#ba1414]/25 shadow-2xs hover:shadow-xs">
+      &larr; Back to Full Menu
+    </a>
+  </div>
+
+  <!-- Detail Container Card -->
+  <div class="bg-white rounded-3xl border border-[#ba1414]/20 shadow-xl shadow-[#ba1414]/5 overflow-hidden">
+    
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-0">
+      
+      <!-- Left Column: High-Res Dish Image -->
+      <div class="lg:col-span-6 relative aspect-4/3 lg:aspect-auto lg:min-h-[460px] bg-slate-100">
+        <img 
+          src="<%= dish.imageUrl %>" 
+          alt="<%= dish.name %>"
+          class="w-full h-full object-cover object-center"
+        >
+        <!-- Mobile Overlay -->
+        <div class="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-transparent to-transparent lg:hidden"></div>
+        <div class="absolute bottom-4 left-4 lg:hidden text-white">
+          <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-[#ba1414]">
+            <%= dish.category %>
+          </span>
+          <span class="ml-2 text-lg font-bold">
+            $<%= dish.price.toFixed(2) %>
+          </span>
+        </div>
+      </div>
+
+      <!-- Right Column: Dish Info, Chef & Ingredients -->
+      <div class="lg:col-span-6 p-6 sm:p-10 flex flex-col justify-between">
+        
+        <div>
+          <!-- Badges & Price Header -->
+          <div class="hidden lg:flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2">
+              <span class="px-3 py-1 rounded-full text-xs font-bold bg-[#ba1414]/10 text-[#ba1414]">
+                <%= dish.category %>
+              </span>
+              <% if (dish.available) { %>
+                <span class="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Available
+                </span>
+              <% } else { %>
+                <span class="px-3 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-800">
+                  Currently Sold Out
+                </span>
+              <% } %>
+            </div>
+            <div class="text-3xl font-black text-[#ba1414]">
+              $<%= dish.price.toFixed(2) %>
+            </div>
+          </div>
+
+          <!-- Dish Name -->
+          <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+            <%= dish.name %>
+          </h1>
+
+          <!-- Description -->
+          <p class="mt-3 text-slate-600 leading-relaxed text-sm sm:text-base break-words">
+            <%= dish.description %>
+          </p>
+
+          <hr class="my-6 border-slate-100">
+
+          <!-- Chef Section -->
+          <div class="mb-6">
+            <h2 class="text-xs font-bold text-[#ba1414] tracking-wider uppercase mb-3">
+              Crafted By
+            </h2>
+            <div class="p-4 rounded-2xl bg-[#f5f5f5] border border-[#ba1414]/20 flex items-center gap-4">
+              <div class="w-12 h-12 rounded-xl bg-[#ba1414] text-[#f5f5f5] flex items-center justify-center font-bold text-xl shadow-md shadow-[#ba1414]/20">
+                👨‍🍳
+              </div>
+              <div>
+                <h3 class="font-bold text-slate-900 text-base">
+                  <%= dish.chef ? dish.chef.name : 'Executive Culinary Team' %>
+                </h3>
+                <p class="text-xs text-slate-500">
+                  Specialty: <span class="font-medium text-slate-700"><%= dish.chef ? dish.chef.specialty : 'Artisanal Gastronomy' %></span>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Ingredients Section -->
+          <div>
+            <h2 class="text-xs font-bold text-[#ba1414] tracking-wider uppercase mb-3 flex items-center justify-between">
+              <span>Ingredients</span>
+              <span class="text-slate-400 text-2xs lowercase font-normal">(freshly sourced)</span>
+            </h2>
+
+            <% if (dish.ingredients && dish.ingredients.length > 0) { %>
+              <div class="flex flex-wrap gap-2">
+                <% dish.ingredients.forEach(ing => { %>
+                  <div class="px-3 py-1.5 rounded-xl bg-[#f5f5f5] text-slate-800 border border-[#ba1414]/20 text-xs font-medium flex items-center gap-1.5 shadow-2xs">
+                    <span class="text-[#ba1414] font-bold">•</span>
+                    <span><%= ing.name %></span>
+                    <span class="text-slate-400 text-2xs">(<%= ing.unit %>)</span>
+                  </div>
+                <% }) %>
+              </div>
+            <% } else { %>
+              <p class="text-xs text-slate-400 italic">No specific ingredients listed for this preparation.</p>
+            <% } %>
+          </div>
+
+        </div>
+
+        <!-- Action Footer -->
+        <div class="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between">
+          <div class="text-xs text-slate-500 font-medium">
+            Dish ID #<%= dish.id %> &bull; B.H.T Diner
+          </div>
+          <a href="/dishes" class="px-5 py-2.5 rounded-xl bg-[#ba1414] hover:bg-[#991010] text-[#f5f5f5] font-bold text-sm shadow-md shadow-[#ba1414]/20 transition-all">
+            Explore Other Dishes &rarr;
+          </a>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+<%- include('../layouts/footer') %>

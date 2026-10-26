@@ -1,0 +1,180 @@
+<%- include('../layouts/header') %>
+
+<!-- Admin Dish Detail & Edit View -->
+<div class="max-w-4xl mx-auto space-y-6">
+
+  <!-- Header Navigation -->
+  <div class="flex items-center justify-between pb-4 border-b border-[#ba1414]/20">
+    <div class="flex items-center gap-3">
+      <a href="/admin/dishes" class="text-sm font-bold text-[#ba1414] hover:text-[#991010] bg-white px-3 py-1.5 rounded-lg border border-[#ba1414]/25 shadow-2xs">
+        &larr; Back to Dishes Table
+      </a>
+      <h1 class="text-2xl font-black text-slate-900 tracking-tight">
+        Edit Dish #<%= dish.id %>: <%= dish.name %>
+      </h1>
+    </div>
+
+    <!-- Delete Button Form -->
+    <form method="POST" action="/admin/dishes/<%= dish.id %>?_method=DELETE" onsubmit="return true;">
+      <input type="hidden" name="_method" value="DELETE">
+      <button type="submit" class="px-4 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 transition-colors">
+        Delete Dish
+      </button>
+    </form>
+  </div>
+
+  <!-- Edit Dish Card -->
+  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8">
+    
+    <div class="mb-6 flex items-center justify-between pb-4 border-b border-slate-100">
+      <div>
+        <h2 class="text-lg font-black text-[#ba1414]">
+          Modify Dish Details
+        </h2>
+        <p class="text-xs text-slate-500">
+          Update dish information and ingredients below.
+        </p>
+      </div>
+      <img src="<%= dish.imageUrl %>" alt="<%= dish.name %>" class="w-16 h-16 rounded-xl object-cover border border-slate-200 shadow-xs">
+    </div>
+
+    <!-- Edit Form -->
+    <form method="POST" action="/admin/dishes/<%= dish.id %>?_method=PATCH" class="space-y-6">
+      <input type="hidden" name="_method" value="PATCH">
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        
+        <!-- Dish Name -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+            Dish Name *
+          </label>
+          <input 
+            type="text" 
+            name="name" 
+            value="<%= dish.name %>"
+            required 
+            class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#ba1414] text-sm"
+          >
+        </div>
+
+        <!-- Price -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+            Price (USD) * <span class="text-xs text-slate-400 font-normal lowercase">(non-negative)</span>
+          </label>
+          <input 
+            type="number" 
+            step="0.01" 
+            min="0"
+            name="price" 
+            value="<%= dish.price %>"
+            required 
+            class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#ba1414] text-sm"
+          >
+        </div>
+
+        <!-- Category -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+            Category *
+          </label>
+          <select name="category" required class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#ba1414] text-sm bg-white">
+            <option value="Main Course" <%= dish.category === 'Main Course' ? 'selected' : '' %>>Main Course</option>
+            <option value="Appetizer" <%= dish.category === 'Appetizer' ? 'selected' : '' %>>Appetizer</option>
+            <option value="Dessert" <%= dish.category === 'Dessert' ? 'selected' : '' %>>Dessert</option>
+            <option value="Beverage" <%= dish.category === 'Beverage' ? 'selected' : '' %>>Beverage</option>
+          </select>
+        </div>
+
+        <!-- Chef Selection -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+            Chef *
+          </label>
+          <select name="chefId" required class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#ba1414] text-sm bg-white">
+            <% chefs.forEach(chef => { %>
+              <option value="<%= chef.id %>" <%= dish.chefId === chef.id ? 'selected' : '' %>>
+                <%= chef.name %> (<%= chef.specialty %>)
+              </option>
+            <% }) %>
+          </select>
+        </div>
+
+        <!-- Image URL -->
+        <div class="sm:col-span-2">
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+            Image URL
+          </label>
+          <input 
+            type="url" 
+            name="imageUrl" 
+            value="<%= dish.imageUrl %>"
+            class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#ba1414] text-sm"
+          >
+        </div>
+
+      </div>
+
+      <!-- Description -->
+      <div>
+        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+          Description *
+        </label>
+        <textarea 
+          name="description" 
+          rows="3" 
+          required
+          class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#ba1414] text-sm"
+        ><%= dish.description %></textarea>
+      </div>
+
+      <!-- Availability Toggle -->
+      <div class="flex items-center gap-2">
+        <input type="checkbox" id="available" name="available" <%= dish.available ? 'checked' : '' %> class="w-4 h-4 text-[#ba1414] rounded-md border-slate-300 focus:ring-[#ba1414]">
+        <label for="available" class="text-sm font-semibold text-slate-700 cursor-pointer">
+          Available on Menu
+        </label>
+      </div>
+
+      <!-- Ingredients Selection Checkboxes -->
+      <div>
+        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+          Assigned Ingredients * <span class="text-xs text-rose-600 font-normal lowercase">(must choose at least one)</span>
+        </label>
+        <% 
+          const currentIngIds = dish.ingredients ? dish.ingredients.map(i => i.id) : [];
+        %>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 rounded-xl bg-[#f5f5f5] border border-[#ba1414]/20">
+          <% ingredients.forEach(ing => { %>
+            <label class="flex items-center gap-2 text-xs text-slate-700 cursor-pointer hover:text-[#ba1414]">
+              <input 
+                type="checkbox" 
+                name="ingredientIds" 
+                value="<%= ing.id %>" 
+                <%= currentIngIds.includes(ing.id) ? 'checked' : '' %>
+                class="w-4 h-4 text-[#ba1414] rounded-md border-slate-300"
+              >
+              <span><%= ing.name %> (<%= ing.unit %>)</span>
+            </label>
+          <% }) %>
+        </div>
+      </div>
+
+      <!-- Submit / Save Button -->
+      <div class="pt-4 border-t border-slate-100 flex items-center justify-between">
+        <a href="/admin/dishes" class="text-xs font-bold text-slate-500 hover:text-slate-800">
+          Cancel & Return
+        </a>
+        <button type="submit" class="px-6 py-2.5 rounded-xl bg-[#ba1414] hover:bg-[#991010] text-[#f5f5f5] font-bold text-sm shadow-md shadow-[#ba1414]/20 transition-all">
+          Save Changes
+        </button>
+      </div>
+
+    </form>
+
+  </div>
+
+</div>
+
+<%- include('../layouts/footer') %>

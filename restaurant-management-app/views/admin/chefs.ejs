@@ -1,0 +1,249 @@
+<%- include('../layouts/header') %>
+
+<!-- Admin Chefs Management View -->
+<div class="space-y-8">
+
+  <!-- Top Action Header -->
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-[#ba1414]/20">
+    <div>
+      <h1 class="text-2xl sm:text-3xl font-black text-[#ba1414] tracking-tight flex items-center gap-2">
+        <span>👨‍🍳</span> Chefs Management
+      </h1>
+      <p class="text-sm text-slate-500 mt-1">
+        Manage restaurant culinary leaders. Note: Deleting a chef cascades and deletes all dishes cooked by that chef.
+      </p>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs font-bold px-3 py-1.5 rounded-full bg-[#ba1414]/10 text-[#ba1414] border border-[#ba1414]/20">
+        <%= chefs.length %> Total Chefs
+      </span>
+      <a href="#new-chef-form" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#ba1414] hover:bg-[#991010] text-[#f5f5f5] font-bold text-sm shadow-md shadow-[#ba1414]/20 transition-all">
+        + Add New Chef
+      </a>
+    </div>
+  </div>
+
+  <!-- Cascade Delete Info Alert -->
+  <div class="p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-center gap-2">
+    <span class="text-base font-bold">⚠️</span>
+    <span>
+      <strong>Cascade Delete Rule:</strong> When a chef is deleted, all dishes cooked by that chef are automatically deleted as well. Ingredients will stay.
+    </span>
+  </div>
+
+  <!-- Mobile Stacked Cards (Visible only on screens < 768px, zero sideways scroll) -->
+  <div class="md:hidden space-y-4">
+    <% if (chefs && chefs.length > 0) { %>
+      <% chefs.forEach(chef => { %>
+        <div class="bg-white rounded-2xl border border-[#ba1414]/20 p-4 shadow-sm flex flex-col gap-3 <%= editId === chef.id ? 'ring-2 ring-[#ba1414] bg-[#ba1414]/5' : '' %>">
+          
+          <!-- Top Row: Avatar + Name + ID -->
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <span class="w-9 h-9 rounded-xl bg-[#ba1414]/10 text-[#ba1414] flex items-center justify-center font-bold text-base shadow-2xs">👨‍🍳</span>
+              <div>
+                <h3 class="font-black text-slate-900 text-base leading-tight"><%= chef.name %></h3>
+                <span class="text-2xs font-mono text-slate-400">#<%= chef.id %></span>
+              </div>
+            </div>
+            <% if (chef.dishes && chef.dishes.length > 0) { %>
+              <span class="text-2xs font-bold px-2.5 py-1 rounded-full bg-[#ba1414]/10 text-[#ba1414] border border-[#ba1414]/20">
+                <%= chef.dishes.length %> <%= chef.dishes.length === 1 ? 'dish' : 'dishes' %>
+              </span>
+            <% } %>
+          </div>
+
+          <!-- Middle Details: Specialty & Cooked Dishes -->
+          <div class="bg-[#f5f5f5] p-3 rounded-xl text-xs space-y-2">
+            <div>
+              <span class="text-slate-400 font-bold uppercase text-2xs block">Specialty</span>
+              <span class="font-bold text-slate-800"><%= chef.specialty %></span>
+            </div>
+            <div class="pt-2 border-t border-slate-200/60">
+              <span class="text-slate-400 font-bold uppercase text-2xs block">Dishes Cooked</span>
+              <% if (chef.dishes && chef.dishes.length > 0) { %>
+                <span class="text-slate-600 block mt-0.5"><%= chef.dishes.map(d => d.name).join(', ') %></span>
+              <% } else { %>
+                <span class="text-slate-400 italic">No assigned dishes</span>
+              <% } %>
+            </div>
+          </div>
+
+          <!-- Bottom Actions: Edit and Delete -->
+          <div class="flex items-center gap-2 pt-1 border-t border-slate-100">
+            <a href="/admin/chefs?edit=<%= chef.id %>#edit-chef" class="flex-1 py-2 text-center rounded-xl text-xs font-bold bg-[#ba1414]/10 text-[#ba1414] hover:bg-[#ba1414]/20 border border-[#ba1414]/30 transition-colors">
+              Edit
+            </a>
+            <form method="POST" action="/admin/chefs/<%= chef.id %>?_method=DELETE" class="flex-1">
+              <input type="hidden" name="_method" value="DELETE">
+              <button type="submit" class="w-full py-2 text-center rounded-xl text-xs font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition-colors">
+                Delete
+              </button>
+            </form>
+          </div>
+
+        </div>
+      <% }) %>
+    <% } else { %>
+      <div class="bg-white rounded-2xl border border-dashed border-[#ba1414]/30 p-6 text-center text-slate-400 italic text-sm">
+        No chefs found. Use the form below to add a chef.
+      </div>
+    <% } %>
+  </div>
+
+  <!-- Desktop Tabular Display of Chefs (Hidden on screens < 768px) -->
+  <div class="hidden md:block bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-left border-collapse text-sm">
+        <thead>
+          <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold text-xs uppercase tracking-wider">
+            <th class="py-3.5 px-4">ID</th>
+            <th class="py-3.5 px-4">Name</th>
+            <th class="py-3.5 px-4">Specialty</th>
+            <th class="py-3.5 px-4">Cooked Dishes</th>
+            <th class="py-3.5 px-4 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 text-slate-700">
+          <% if (chefs && chefs.length > 0) { %>
+            <% chefs.forEach(chef => { %>
+              
+              <!-- Standard Row -->
+              <tr class="hover:bg-[#ba1414]/5 transition-colors <%= editId === chef.id ? 'bg-[#ba1414]/10' : '' %>">
+                <td class="py-3 px-4 font-mono text-xs font-bold text-slate-400">
+                  #<%= chef.id %>
+                </td>
+                <td class="py-3 px-4 font-bold text-slate-900">
+                  <%= chef.name %>
+                </td>
+                <td class="py-3 px-4 text-slate-600">
+                  <%= chef.specialty %>
+                </td>
+                <td class="py-3 px-4">
+                  <% if (chef.dishes && chef.dishes.length > 0) { %>
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#ba1414]/10 text-[#ba1414] border border-[#ba1414]/20">
+                      <%= chef.dishes.length %> <%= chef.dishes.length === 1 ? 'dish' : 'dishes' %>
+                    </span>
+                    <span class="text-xs text-slate-400 ml-1">
+                      (<%= chef.dishes.map(d => d.name).slice(0, 2).join(', ') %><%= chef.dishes.length > 2 ? '...' : '' %>)
+                    </span>
+                  <% } else { %>
+                    <span class="text-xs text-slate-400 italic">No assigned dishes</span>
+                  <% } %>
+                </td>
+                <td class="py-3 px-4 text-right">
+                  <div class="inline-flex items-center gap-2">
+                    <!-- Inline Edit Trigger -->
+                    <a href="/admin/chefs?edit=<%= chef.id %>#edit-chef" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#ba1414]/10 text-[#ba1414] hover:bg-[#ba1414]/20 border border-[#ba1414]/30 transition-colors">
+                      Edit
+                    </a>
+
+                    <!-- Delete Form -->
+                    <form method="POST" action="/admin/chefs/<%= chef.id %>?_method=DELETE" class="inline">
+                      <input type="hidden" name="_method" value="DELETE">
+                      <button type="submit" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition-colors">
+                        Delete
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+
+            <% }) %>
+          <% } else { %>
+            <tr>
+              <td colspan="5" class="py-8 text-center text-slate-400 italic">
+                No chefs found. Use the form below to add a chef.
+              </td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- If Edit Mode Active, Show Edit Chef Form -->
+  <% if (editId) { %>
+    <% const chefToEdit = chefs.find(c => c.id === editId); %>
+    <% if (chefToEdit) { %>
+      <div id="edit-chef" class="bg-[#ba1414]/5 border-2 border-[#ba1414] rounded-2xl p-6 sm:p-8 shadow-sm">
+        <div class="flex items-center justify-between pb-3 border-b border-[#ba1414]/20 mb-4">
+          <h2 class="text-lg font-black text-[#ba1414] flex items-center gap-2">
+            <span>✏️</span> Edit Chef: <%= chefToEdit.name %>
+          </h2>
+          <a href="/admin/chefs" class="text-xs font-bold text-slate-500 hover:text-slate-800">✕ Cancel Edit</a>
+        </div>
+
+        <form method="POST" action="/admin/chefs/<%= chefToEdit.id %>?_method=PATCH" class="space-y-4">
+          <input type="hidden" name="_method" value="PATCH">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Chef Name *</label>
+              <input type="text" name="name" value="<%= chefToEdit.name %>" required class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#ba1414] text-sm bg-white">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Specialty *</label>
+              <input type="text" name="specialty" value="<%= chefToEdit.specialty %>" required class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#ba1414] text-sm bg-white">
+            </div>
+          </div>
+          <div class="pt-2">
+            <button type="submit" class="px-6 py-2.5 rounded-xl bg-[#ba1414] hover:bg-[#991010] text-[#f5f5f5] font-bold text-sm shadow-md shadow-[#ba1414]/20 transition-all">
+              Save Changes
+            </button>
+          </div>
+        </form>
+      </div>
+    <% } %>
+  <% } %>
+
+  <!-- Add New Chef Form -->
+  <div id="new-chef-form" class="bg-white rounded-2xl border border-[#ba1414]/20 p-6 sm:p-8 shadow-sm">
+    <div class="border-b border-slate-100 pb-4 mb-6">
+      <h2 class="text-xl font-black text-[#ba1414] flex items-center gap-2">
+        <span>➕</span> Add New Chef
+      </h2>
+      <p class="text-xs text-slate-500 mt-1">
+        Add a new culinary leader to the team below.
+      </p>
+    </div>
+
+    <form method="POST" action="/admin/chefs" class="space-y-6">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+            Chef Name *
+          </label>
+          <input 
+            type="text" 
+            name="name" 
+            required 
+            placeholder="e.g. Chef Marco Bellini" 
+            class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#ba1414] text-sm"
+          >
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+            Specialty *
+          </label>
+          <input 
+            type="text" 
+            name="specialty" 
+            required 
+            placeholder="e.g. Traditional Tuscan Cuisine & Pastas" 
+            class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-hidden focus:ring-2 focus:ring-[#ba1414] text-sm"
+          >
+        </div>
+      </div>
+
+      <div class="pt-2">
+        <button type="submit" class="px-6 py-2.5 rounded-xl bg-[#ba1414] hover:bg-[#991010] text-[#f5f5f5] font-bold text-sm shadow-md shadow-[#ba1414]/20 transition-all">
+          Save Chef
+        </button>
+      </div>
+    </form>
+  </div>
+
+</div>
+
+<%- include('../layouts/footer') %>
