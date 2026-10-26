@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
 import LoadHandler from '../components/LoadHandler';
 import { Plus, Edit2, Trash2, AlertCircle, CheckCircle2, XCircle, Utensils, ChefHat, Filter, ArrowUpDown, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
@@ -8,6 +8,9 @@ const CATEGORIES = ['Main Course', 'Appetizer', 'Dessert', 'Beverage'];
 
 export default function AdminDishesPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlPage = parseInt(searchParams.get('page') || '1', 10);
+  const currentPage = urlPage > 0 ? urlPage : 1;
 
   // Page local state
   const [dishes, setDishes] = useState([]);
@@ -20,7 +23,6 @@ export default function AdminDishesPage() {
   const [errorBanner, setErrorBanner] = useState('');
 
   // Server-Side Pagination state (PageSize = 20)
-  const [currentPage, setCurrentPage] = useState(1);
   const [totalDishes, setTotalDishes] = useState(0);
 
   // Client-Side Filter State (Admin pages ONLY)
@@ -146,13 +148,27 @@ export default function AdminDishesPage() {
 
   const totalPages = Math.ceil(totalDishes / 20) || 1;
 
+  const handlePageChange = (newPage) => {
+    if (newPage < 1 || newPage > totalPages) return;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('page', String(newPage));
+      return next;
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleResetFilters = () => {
     setFilterCategory('All');
     setFilterIngredientId('All');
     setFilterChefId('All');
     setFilterStatus('All');
     setSortOption('name-asc');
-    setCurrentPage(1);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('page', '1');
+      return next;
+    });
   };
 
   // Handle form input changes
@@ -560,7 +576,7 @@ export default function AdminDishesPage() {
         <div className="flex items-center justify-between pb-2 border-b border-gray-100 flex-wrap gap-2">
           <div className="flex items-center gap-2 text-xs font-bold text-gray-700 uppercase tracking-wider">
             <Filter className="w-4 h-4 text-[#ba1414]" />
-            <span>Bộ lọc & Sắp xếp (Client-Side)</span>
+            <span>Bộ lọc & Sắp xếp</span>
           </div>
           <button
             type="button"
@@ -580,7 +596,11 @@ export default function AdminDishesPage() {
               value={filterCategory}
               onChange={(e) => {
                 setFilterCategory(e.target.value);
-                setCurrentPage(1);
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.set('page', '1');
+                  return next;
+                });
               }}
               className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded-lg p-2 text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#ba1414]"
             >
@@ -598,7 +618,11 @@ export default function AdminDishesPage() {
               value={filterIngredientId}
               onChange={(e) => {
                 setFilterIngredientId(e.target.value);
-                setCurrentPage(1);
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.set('page', '1');
+                  return next;
+                });
               }}
               className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded-lg p-2 text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#ba1414]"
             >
@@ -616,7 +640,11 @@ export default function AdminDishesPage() {
               value={filterChefId}
               onChange={(e) => {
                 setFilterChefId(e.target.value);
-                setCurrentPage(1);
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.set('page', '1');
+                  return next;
+                });
               }}
               className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded-lg p-2 text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#ba1414]"
             >
@@ -634,7 +662,11 @@ export default function AdminDishesPage() {
               value={filterStatus}
               onChange={(e) => {
                 setFilterStatus(e.target.value);
-                setCurrentPage(1);
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.set('page', '1');
+                  return next;
+                });
               }}
               className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded-lg p-2 text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#ba1414]"
             >
@@ -652,7 +684,11 @@ export default function AdminDishesPage() {
                 value={sortOption}
                 onChange={(e) => {
                   setSortOption(e.target.value);
-                  setCurrentPage(1);
+                  setSearchParams((prev) => {
+                    const next = new URLSearchParams(prev);
+                    next.set('page', '1');
+                    return next;
+                  });
                 }}
                 className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded-lg p-2 text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#ba1414]"
               >
@@ -712,8 +748,8 @@ export default function AdminDishesPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="py-3.5 px-4">
-                    <span className="inline-block px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800">
+                  <td className="py-3.5 px-4 whitespace-nowrap">
+                    <span className="inline-block px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800 whitespace-nowrap">
                       {dish.category}
                     </span>
                   </td>
@@ -799,7 +835,7 @@ export default function AdminDishesPage() {
                     </span>
                   </div>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 whitespace-nowrap">
                       {dish.category}
                     </span>
                     {dish.available ? (
@@ -856,11 +892,8 @@ export default function AdminDishesPage() {
             <button
               type="button"
               disabled={currentPage <= 1}
-              onClick={() => {
-                setCurrentPage((p) => p - 1);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              onClick={() => handlePageChange(currentPage - 1)}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" />
               <span>Trước</span>
@@ -876,11 +909,8 @@ export default function AdminDishesPage() {
                 <button
                   key={p}
                   type="button"
-                  onClick={() => {
-                    setCurrentPage(p);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className={`w-8 h-8 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
+                  onClick={() => handlePageChange(p)}
+                  className={`w-8 h-8 rounded-lg text-xs sm:text-sm font-semibold transition-colors cursor-pointer ${
                     currentPage === p
                       ? 'bg-[#ba1414] text-white shadow-xs'
                       : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -894,11 +924,8 @@ export default function AdminDishesPage() {
             <button
               type="button"
               disabled={currentPage >= totalPages}
-              onClick={() => {
-                setCurrentPage((p) => p + 1);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              onClick={() => handlePageChange(currentPage + 1)}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
               <span>Sau</span>
               <ChevronRight className="w-4 h-4" />

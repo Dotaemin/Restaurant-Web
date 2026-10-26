@@ -1,18 +1,23 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../api/client';
 import LoadHandler from '../components/LoadHandler';
 import { Plus, Edit2, Trash2, AlertCircle, CheckCircle2, ChefHat, UtensilsCrossed, Filter, ArrowUpDown, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 
 export default function AdminChefsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlPage = parseInt(searchParams.get('page') || '1', 10);
+  const currentPage = urlPage > 0 ? urlPage : 1;
+
   const [chefs, setChefs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState('');
   const [successBanner, setSuccessBanner] = useState('');
   const [errorBanner, setErrorBanner] = useState('');
 
   // Server-Side Pagination state (PageSize = 20)
-  const [currentPage, setCurrentPage] = useState(1);
   const [totalChefs, setTotalChefs] = useState(0);
 
   // Client-Side Filter & Sort State (Admin pages ONLY)
@@ -37,26 +42,54 @@ export default function AdminChefsPage() {
   const loadChefs = async (pageToLoad = currentPage) => {
     setLoading(true);
     setErrorBanner('');
-    const [field, dir] = sortOption.split('-');
-    const res = await api.getChefs({
-      page: pageToLoad,
-      pageSize: 20,
-      specialty: debouncedSpecialty,
-      sortBy: field,
-      sortOrder: dir
-    });
-    if (res.ok) {
-      setChefs(res.data?.items || []);
-      setTotalChefs(res.data?.meta?.total || 0);
-    } else {
-      setErrorBanner(res.error?.message || 'Failed to load chefs list.');
+    try {
+      const [field, dir] = sortOption.split('-');
+      const res = await api.getChefs({
+        page: pageToLoad,
+        pageSize: 20,
+        specialty: debouncedSpecialty,
+        sortBy: field,
+        sortOrder: dir
+      });
+      if (res.ok) {
+        setChefs(res.data?.items || []);
+        setTotalChefs(res.data?.meta?.total || 0);
+      } else {
+        setErrorBanner(res.error?.message || 'Failed to load chefs list.');
+      }
+    } catch (err) {
+      setErrorBanner('Failed to load chefs list.');
+    } finally {
+      setLoading(false);
+      setInitialLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
     loadChefs(currentPage);
   }, [currentPage, debouncedSpecialty, sortOption]);
+
+  const totalPages = Math.ceil(totalChefs / 20) || 1;
+
+  const handlePageChange = (newPage) => {
+    if (newPage < 1 || newPage > totalPages) return;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('page', String(newPage));
+      return next;
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleResetFilters = () => {
+    setFilterSpecialty('');
+    setSortOption('name-asc');
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('page', '1');
+      return next;
+    });
+  };
 
   // Client-Side Filter & Sort computation (per spec: "Filter and sort must be client side")
   const filteredAndSortedChefs = useMemo(() => {
@@ -82,14 +115,6 @@ export default function AdminChefsPage() {
 
     return result;
   }, [chefs, filterSpecialty, sortOption]);
-
-  const totalPages = Math.ceil(totalChefs / 20) || 1;
-
-  const handleResetFilters = () => {
-    setFilterSpecialty('');
-    setSortOption('name-asc');
-    setCurrentPage(1);
-  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -190,6 +215,8 @@ export default function AdminChefsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Red Loading Overlay on navigation, removed after loading completes */}
+      <LoadHandler loading={initialLoading || submitting} message={submitMessage || 'Loading chefs...'} />
 
       {/* Header and Add Button */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-200">
@@ -329,7 +356,7 @@ export default function AdminChefsPage() {
         <div className="flex items-center justify-between pb-2 border-b border-gray-100 flex-wrap gap-2">
           <div className="flex items-center gap-2 text-xs font-bold text-gray-700 uppercase tracking-wider">
             <Filter className="w-4 h-4 text-[#ba1414]" />
-            <span>Bộ lọc & Sắp xếp (Client-Side)</span>
+            <span>Bộ lọc & Sắp xếp</span>
           </div>
           <button
             type="button"
@@ -350,7 +377,11 @@ export default function AdminChefsPage() {
               value={filterSpecialty}
               onChange={(e) => {
                 setFilterSpecialty(e.target.value);
-                setCurrentPage(1);
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.set('page', '1');
+                  return next;
+                });
               }}
               placeholder="Nhập chuyên môn cần lọc (ví dụ: Nướng, Lẩu, Bún)..."
               className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded-lg p-2 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#ba1414]"
@@ -370,7 +401,11 @@ export default function AdminChefsPage() {
               value={sortOption}
               onChange={(e) => {
                 setSortOption(e.target.value);
-                setCurrentPage(1);
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.set('page', '1');
+                  return next;
+                });
               }}
               className="w-full text-xs font-medium bg-gray-50 border border-gray-200 rounded-lg p-2 text-gray-800 focus:outline-none focus:ring-1 focus:ring-[#ba1414]"
             >
@@ -539,11 +574,8 @@ export default function AdminChefsPage() {
             <button
               type="button"
               disabled={currentPage <= 1}
-              onClick={() => {
-                setCurrentPage((p) => p - 1);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              onClick={() => handlePageChange(currentPage - 1)}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" />
               <span>Trước</span>
@@ -559,11 +591,8 @@ export default function AdminChefsPage() {
                 <button
                   key={p}
                   type="button"
-                  onClick={() => {
-                    setCurrentPage(p);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className={`w-8 h-8 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
+                  onClick={() => handlePageChange(p)}
+                  className={`w-8 h-8 rounded-lg text-xs sm:text-sm font-semibold transition-colors cursor-pointer ${
                     currentPage === p
                       ? 'bg-[#ba1414] text-white shadow-xs'
                       : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -577,11 +606,8 @@ export default function AdminChefsPage() {
             <button
               type="button"
               disabled={currentPage >= totalPages}
-              onClick={() => {
-                setCurrentPage((p) => p + 1);
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              onClick={() => handlePageChange(currentPage + 1)}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-300 text-xs sm:text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
             >
               <span>Sau</span>
               <ChevronRight className="w-4 h-4" />
