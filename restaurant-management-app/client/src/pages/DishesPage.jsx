@@ -393,7 +393,7 @@ export default function DishesPage({ paginationMode = 'page' }) {
                       <h2 className="text-base sm:text-lg font-bold text-gray-900 group-hover:text-[#ba1414] transition-colors line-clamp-1">
                         {dish.name}
                       </h2>
-                      <span className="shrink-0 text-base font-extrabold text-[#ba1414]">
+                      <span className="shrink-0 text-base font-extrabold text-[#ba1414] tabular-nums">
                         ${parseFloat(dish.price).toFixed(2)}
                       </span>
                     </div>
