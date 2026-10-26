@@ -81,7 +81,7 @@ export default function DishDetailPage() {
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">
                   {dish.name}
                 </h1>
-                <span className="text-2xl font-black text-[#ba1414] shrink-0">
+                <span className="text-2xl font-black text-[#ba1414] shrink-0 tabular-nums">
                   ${parseFloat(dish.price).toFixed(2)}
                 </span>
               </div>

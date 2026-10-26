@@ -828,7 +828,7 @@ export default function AdminDishesPage() {
             <tr className="bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-500 uppercase tracking-wider">
               <th className="py-3.5 px-4">Dish</th>
               <th className="py-3.5 px-4">Category</th>
-              <th className="py-3.5 px-4">Price</th>
+              <th className="py-3.5 px-4 tabular-nums">Price</th>
               <th className="py-3.5 px-4">Chef</th>
               <th className="py-3.5 px-4">Ingredients</th>
               <th className="py-3.5 px-4">Status</th>
@@ -863,7 +863,7 @@ export default function AdminDishesPage() {
                       {dish.category}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4 font-bold text-[#ba1414]">
+                  <td className="py-3.5 px-4 font-bold text-[#ba1414] tabular-nums">
                     ${parseFloat(dish.price).toFixed(2)}
                   </td>
                   <td className="py-3.5 px-4 font-medium text-gray-800">
@@ -940,7 +940,7 @@ export default function AdminDishesPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-1">
                     <h3 className="font-bold text-gray-900 text-base truncate">{dish.name}</h3>
-                    <span className="font-black text-[#ba1414] text-base shrink-0">
+                    <span className="font-black text-[#ba1414] text-base shrink-0 tabular-nums">
                       ${parseFloat(dish.price).toFixed(2)}
                     </span>
                   </div>
