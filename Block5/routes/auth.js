@@ -188,7 +188,7 @@ router.post('/register', async (req, res) => {
     return res.status(500).render('auth/register', {
       title: 'Register Account',
       recaptchaSiteKey: recaptcha.getSiteKey(),
-      error: 'VALIDATION_FAILED: Không thể tạo tài khoản vào lúc này. Vui lòng thử lại sau.',
+      error: 'VALIDATION_FAILED: Unable to create account at this time. Please try again later.',
       old
     });
   }
@@ -203,13 +203,13 @@ router.get('/activation', async (req, res) => {
   const email = (req.query.email || '').trim().toLowerCase();
   let error = null;
   if (req.query.pending) {
-    error = 'Tài khoản của bạn chưa được kích hoạt. Mã OTP xác thực đã được gửi đến email của bạn. Vui lòng nhập mã để kích hoạt tài khoản.';
+    error = 'Your account has not been activated yet. A verification OTP code has been sent to your email. Please enter the code to activate your account.';
   }
   return res.render('auth/activation', {
     title: 'Activate Account',
     email,
     error,
-    info: req.query.resent ? 'Mã OTP mới đã được gửi đến email của bạn.' : null,
+    info: req.query.resent ? 'A new OTP code has been sent to your email.' : null,
     canResend: false
   });
 });
@@ -228,7 +228,7 @@ router.post('/activation', async (req, res) => {
     return res.status(400).render('auth/activation', {
       title: 'Activate Account',
       email,
-      error: 'Mã OTP không chính xác hoặc đã hết hạn. Vui lòng kiểm tra lại.',
+      error: 'Invalid or expired OTP code. Please check and try again.',
       info: null,
       canResend: true
     });
@@ -245,7 +245,7 @@ router.post('/activation', async (req, res) => {
     return res.status(400).render('auth/activation', {
       title: 'Activate Account',
       email,
-      error: 'Bạn đã nhập sai quá số lần quy định (3 lần). Vui lòng nhấn "Gửi lại mã OTP" để nhận mã mới.',
+      error: 'You have exceeded the maximum allowed attempts (3 attempts). Please click "Resend New OTP Code" to receive a new code.',
       info: null,
       canResend: true
     });
@@ -267,8 +267,8 @@ router.post('/activation', async (req, res) => {
       title: 'Activate Account',
       email,
       error: isLockedNow
-        ? 'Bạn đã nhập sai quá số lần quy định (3 lần). Vui lòng nhấn "Gửi lại mã OTP" để nhận mã mới.'
-        : 'Mã OTP không chính xác hoặc đã hết hạn. Vui lòng kiểm tra lại.',
+        ? 'You have exceeded the maximum allowed attempts (3 attempts). Please click "Resend New OTP Code" to receive a new code.'
+        : 'Invalid or expired OTP code. Please check and try again.',
       info: null,
       canResend: isLockedNow || isExpired
     });
@@ -317,7 +317,7 @@ router.post('/activation/resend', async (req, res) => {
     if (elapsedMs < 60 * 1000) {
       return res.status(429).render('errors/429', {
         title: '429 - Too Many Requests',
-        cause: `Vui lòng chờ ít nhất 1 phút trước khi yêu cầu gửi lại mã OTP (còn ${Math.ceil((60000 - elapsedMs) / 1000)} giây).`,
+        cause: `Please wait at least 1 minute before requesting a new OTP code (${Math.ceil((60000 - elapsedMs) / 1000)} seconds remaining).`,
         backUrl: `/activation?email=${encodeURIComponent(email)}`
       });
     }
@@ -354,7 +354,7 @@ router.get('/login', (req, res) => {
   if (status.locked) {
     return res.status(429).render('errors/429', {
       title: '429 - Account Locked',
-      cause: 'Bạn đã đăng nhập sai quá 5 lần. Vui lòng thử lại sau 5 phút.',
+      cause: 'You have entered incorrect credentials more than 5 times. Please try again after 5 minutes.',
       backUrl: '/dishes'
     });
   }
@@ -365,9 +365,9 @@ router.get('/login', (req, res) => {
     captchaRequired: status.captchaRequired,
     error: null,
     info: req.query.activated
-      ? 'Kích hoạt tài khoản thành công! Vui lòng đăng nhập.'
+      ? 'Account activated successfully! Please sign in.'
       : req.query.resetSuccess
-      ? 'Đổi mật khẩu thành công! Vui lòng đăng nhập bằng mật khẩu mới.'
+      ? 'Password updated successfully! Please sign in with your new password.'
       : null,
     old: {}
   });
@@ -383,7 +383,7 @@ router.post('/login', async (req, res) => {
   if (status.locked) {
     return res.status(429).render('errors/429', {
       title: '429 - Account Locked',
-      cause: 'Bạn đã đăng nhập sai quá 5 lần. Vui lòng thử lại sau 5 phút.',
+      cause: 'You have entered incorrect credentials more than 5 times. Please try again after 5 minutes.',
       backUrl: '/dishes'
     });
   }
@@ -397,7 +397,7 @@ router.post('/login', async (req, res) => {
         title: 'Log In',
         recaptchaSiteKey: recaptcha.getSiteKey(),
         captchaRequired: true,
-        error: captchaResult.message || 'Xác minh CAPTCHA không thành công.',
+        error: captchaResult.message || 'CAPTCHA verification failed. Please try again.',
         info: null,
         old: { identifier }
       });
@@ -408,7 +408,7 @@ router.post('/login', async (req, res) => {
   const cleanPassword = password || '';
 
   // Generic error to prevent enumeration/timing leak
-  const genericError = 'Vui lòng kiểm tra lại và nhập lại Email và Mật khẩu.';
+  const genericError = 'Please check your credentials and re-enter your email and password.';
 
   // 3. Find user by Username OR Email
   const user = await prisma.user.findFirst({
@@ -425,7 +425,7 @@ router.post('/login', async (req, res) => {
     if (updatedStatus.locked) {
       return res.status(429).render('errors/429', {
         title: '429 - Account Locked',
-        cause: 'Bạn đã đăng nhập sai quá 5 lần. Vui lòng thử lại sau 5 phút.',
+        cause: 'You have entered incorrect credentials more than 5 times. Please try again after 5 minutes.',
         backUrl: '/dishes'
       });
     }
@@ -475,7 +475,7 @@ router.post('/login', async (req, res) => {
     if (updatedStatus.locked) {
       return res.status(429).render('errors/429', {
         title: '429 - Account Locked',
-        cause: 'Bạn đã đăng nhập sai quá 5 lần. Vui lòng thử lại sau 5 phút.',
+        cause: 'You have entered incorrect credentials more than 5 times. Please try again after 5 minutes.',
         backUrl: '/dishes'
       });
     }
@@ -548,7 +548,7 @@ router.post('/forget', async (req, res) => {
   if (!rl.allowed) {
     return res.status(429).render('errors/429', {
       title: '429 - Rate Limit Exceeded',
-      cause: `Vui lòng chờ ${rl.remainingSec} giây trước khi gửi lại yêu cầu đặt lại mật khẩu.`,
+      cause: `Please wait ${rl.remainingSec} seconds before requesting another password reset.`,
       backUrl: '/forget'
     });
   }
@@ -580,7 +580,7 @@ router.post('/forget', async (req, res) => {
   return res.render('auth/forget', {
     title: 'Forget Password',
     error: null,
-    info: 'Nếu tài khoản tồn tại và đã kích hoạt, hướng dẫn đặt lại mật khẩu đã được gửi đến email của bạn. Vui lòng kiểm tra hộp thư đến.'
+    info: 'If an active account exists with this email, instructions to reset your password have been sent. Please check your inbox.'
   });
 });
 
@@ -603,7 +603,7 @@ router.get('/reset', async (req, res) => {
   if (!challenge) {
     return res.render('auth/forget', {
       title: 'Forget Password',
-      error: 'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn. Vui lòng yêu cầu liên kết mới.',
+      error: 'Password reset link is invalid or has expired. Please request a new link.',
       info: null
     });
   }
@@ -635,7 +635,7 @@ router.post('/reset', async (req, res) => {
   if (!challenge) {
     return res.render('auth/forget', {
       title: 'Forget Password',
-      error: 'Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn. Vui lòng yêu cầu liên kết mới.',
+      error: 'Password reset link is invalid or has expired. Please request a new link.',
       info: null
     });
   }
@@ -644,7 +644,7 @@ router.post('/reset', async (req, res) => {
     return res.status(400).render('auth/reset', {
       title: 'Reset Password',
       token,
-      error: 'Xác nhận mật khẩu không trùng khớp.'
+      error: 'Password confirmation does not match.'
     });
   }
 

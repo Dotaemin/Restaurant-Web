@@ -167,3 +167,19 @@
 .blue-wipe-banner {
   display: none;
 }
+
+/* Category nowrap */
+.whitespace-nowrap {
+  white-space: nowrap !important;
+}
+
+/* Auth views: 3px gap between input boxes, buttons and text labels */
+form.space-y-5 label {
+  margin-bottom: 3px;
+}
+form.space-y-5 input {
+  margin-bottom: 3px;
+}
+form.space-y-5 button[type="submit"] {
+  margin-top: 3px;
+}

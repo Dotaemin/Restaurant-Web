@@ -190,7 +190,7 @@ async function runAuthTests() {
       otp: '000000'
     });
     assert.strictEqual(wrongOtpRes1.statusCode, 400);
-    assert(wrongOtpRes1.body.includes('Mã OTP không chính xác hoặc đã hết hạn'));
+    assert(wrongOtpRes1.body.includes('Invalid or expired OTP code') || wrongOtpRes1.body.includes('Mã OTP không chính xác hoặc đã hết hạn'));
 
     // Attempt 2: Wrong OTP
     const wrongOtpRes2 = await makeRequest('POST', '/activation', {
@@ -205,7 +205,7 @@ async function runAuthTests() {
       otp: '222222'
     });
     assert.strictEqual(wrongOtpRes3.statusCode, 400);
-    assert(wrongOtpRes3.body.includes('3 lần') || wrongOtpRes3.body.includes('Gửi lại mã OTP'));
+    assert(wrongOtpRes3.body.includes('3 attempts') || wrongOtpRes3.body.includes('Resend New OTP Code') || wrongOtpRes3.body.includes('3 lần') || wrongOtpRes3.body.includes('Gửi lại mã OTP'));
     console.log('   ✓ Enforced 3-attempt OTP limit on activation');
 
     // Attempt 4: Blocked because attempts >= 3
@@ -214,7 +214,7 @@ async function runAuthTests() {
       otp: actualOtp
     });
     assert.strictEqual(blockedRes.statusCode, 400);
-    assert(blockedRes.body.includes('Gửi lại mã OTP'));
+    assert(blockedRes.body.includes('Resend New OTP Code') || blockedRes.body.includes('Gửi lại mã OTP'));
     console.log('   ✓ Blocked further submissions after 3 failed attempts');
 
     // Test Pending Login: attempting login redirects to activation window with new OTP
@@ -231,7 +231,7 @@ async function runAuthTests() {
     // Verify GET /activation with pending=true renders the error message
     const pendingActView = await makeRequest('GET', pendingLoginRes.headers.location);
     assert.strictEqual(pendingActView.statusCode, 200);
-    assert(pendingActView.body.includes('Tài khoản của bạn chưa được kích hoạt'), 'Must display pending error message');
+    assert(pendingActView.body.includes('Your account has not been activated yet') || pendingActView.body.includes('Tài khoản của bạn chưa được kích hoạt'), 'Must display pending error message');
     assert(pendingActView.body.includes('Verification Error'), 'Must render OTP verification error banner');
     console.log('   ✓ Attempting login with pending account redirects to OTP window and dispatches new code');
 
@@ -322,7 +322,7 @@ async function runAuthTests() {
       password: 'WrongPassword123!'
     });
     assert.strictEqual(wrongLoginRes.statusCode, 401);
-    assert(wrongLoginRes.body.includes('Vui lòng kiểm tra lại và nhập lại Email và Mật khẩu'));
+    assert(wrongLoginRes.body.includes('Please check your credentials and re-enter your email and password') || wrongLoginRes.body.includes('Vui lòng kiểm tra lại và nhập lại Email và Mật khẩu'));
     console.log('   ✓ Login returns generic error on wrong credentials');
 
     // 6b. Login with Username + Password

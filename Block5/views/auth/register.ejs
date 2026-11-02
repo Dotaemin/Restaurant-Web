@@ -30,8 +30,8 @@
     <form action="/register" method="POST" class="space-y-5">
       
       <!-- Username Field -->
-      <div>
-        <label for="username" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+      <div class="flex flex-col gap-[3px]">
+        <label for="username" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-[3px]" style="margin-bottom: 3px;">
           Username *
         </label>
         <input 
@@ -46,8 +46,8 @@
       </div>
 
       <!-- Email Field (@gmail.com required) -->
-      <div>
-        <label for="email" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+      <div class="flex flex-col gap-[3px]">
+        <label for="email" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-[3px]" style="margin-bottom: 3px;">
           Email (@gmail.com) *
         </label>
         <input 
@@ -59,14 +59,15 @@
           pattern=".+@gmail\.com"
           title="Email must end with @gmail.com"
           placeholder="yourname@gmail.com" 
-          class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-[#ba1414] focus:ring-2 focus:ring-[#ba1414]/20 outline-none transition-all text-sm font-medium"
+          class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-[#ba1414] focus:ring-2 focus:ring-[#ba1414]/20 outline-none transition-all text-sm font-medium mb-[3px]"
+          style="margin-bottom: 3px;"
         />
-        <p class="text-2xs text-slate-400 mt-1">Must be a valid Gmail address (@gmail.com).</p>
+        <p class="text-2xs text-slate-400 mt-[3px]" style="margin-top: 3px;">Must be a valid Gmail address (@gmail.com).</p>
       </div>
 
       <!-- Password Field -->
-      <div>
-        <label for="password" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+      <div class="flex flex-col gap-[3px]">
+        <label for="password" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-[3px]" style="margin-bottom: 3px;">
           Password *
         </label>
         <input 
@@ -76,19 +77,40 @@
           required 
           minlength="8"
           placeholder="••••••••" 
-          class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-[#ba1414] focus:ring-2 focus:ring-[#ba1414]/20 outline-none transition-all text-sm font-medium"
+          class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-[#ba1414] focus:ring-2 focus:ring-[#ba1414]/20 outline-none transition-all text-sm font-medium mb-[3px]"
+          style="margin-bottom: 3px;"
         />
-        <div class="mt-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-2xs text-slate-600 space-y-1">
-          <div class="font-bold text-slate-700">Password Requirements:</div>
-          <div>• At least 8 characters in length</div>
-          <div>• At least 1 uppercase letter (A-Z)</div>
-          <div>• At least 1 digit (0-9)</div>
-          <div>• At least 1 special symbol (!, @, #, $, %, ^, &, *, &lt;, &gt;, .)</div>
+        <div id="password-requirements" class="mt-[3px] p-3 bg-slate-50 border border-slate-200 rounded-xl text-2xs space-y-1.5 flex flex-col items-center" style="margin-top: 3px;">
+          <div class="font-bold text-slate-700 text-center mb-0.5">Password Requirements:</div>
+          <div class="criteria-item flex items-center justify-center gap-1.5 text-rose-600 transition-colors" data-criteria="length">
+            <span class="criteria-icon inline-flex items-center justify-center w-4 h-4 shrink-0 font-bold" style="width: 16px; min-width: 16px; height: 16px;">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px;"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+            </span>
+            <span class="criteria-text">At least 8 characters in length</span>
+          </div>
+          <div class="criteria-item flex items-center justify-center gap-1.5 text-rose-600 transition-colors" data-criteria="uppercase">
+            <span class="criteria-icon inline-flex items-center justify-center w-4 h-4 shrink-0 font-bold" style="width: 16px; min-width: 16px; height: 16px;">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px;"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+            </span>
+            <span class="criteria-text">At least 1 uppercase letter (A-Z)</span>
+          </div>
+          <div class="criteria-item flex items-center justify-center gap-1.5 text-rose-600 transition-colors" data-criteria="digit">
+            <span class="criteria-icon inline-flex items-center justify-center w-4 h-4 shrink-0 font-bold" style="width: 16px; min-width: 16px; height: 16px;">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px;"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+            </span>
+            <span class="criteria-text">At least 1 digit (0-9)</span>
+          </div>
+          <div class="criteria-item flex items-center justify-center gap-1.5 text-rose-600 transition-colors" data-criteria="special">
+            <span class="criteria-icon inline-flex items-center justify-center w-4 h-4 shrink-0 font-bold" style="width: 16px; min-width: 16px; height: 16px;">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px;"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+            </span>
+            <span class="criteria-text">At least 1 special symbol (!, @, #, $, %, ^, &, *, &lt;, &gt;, .)</span>
+          </div>
         </div>
       </div>
 
       <!-- Google reCAPTCHA v2 Widget -->
-      <div class="flex justify-center pt-2">
+      <div class="flex justify-center pt-2 mb-[3px]" style="margin-bottom: 3px;">
         <script src="https://www.google.com/recaptcha/api.js" async defer></script>
         <div class="g-recaptcha" data-sitekey="<%= recaptchaSiteKey %>"></div>
       </div>
@@ -96,7 +118,8 @@
       <!-- Submit Button -->
       <button 
         type="submit" 
-        class="w-full py-3.5 px-4 rounded-xl bg-[#ba1414] hover:bg-[#991010] text-[#f5f5f5] font-black text-sm tracking-wide shadow-md shadow-[#ba1414]/20 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer"
+        class="w-full py-3.5 px-4 rounded-xl bg-[#ba1414] hover:bg-[#991010] text-[#f5f5f5] font-black text-sm tracking-wide shadow-md shadow-[#ba1414]/20 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer mt-[3px]"
+        style="margin-top: 3px;"
       >
         Create Account &amp; Send OTP
       </button>
@@ -107,6 +130,46 @@
         <a href="/login" class="font-bold text-[#ba1414] hover:underline">Log in here</a>
       </div>
     </form>
+
+    <script>
+      (function() {
+        const pwd = document.getElementById('password');
+        if (!pwd) return;
+
+        const checkSvg = '<svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px;"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>';
+        const crossSvg = '<svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px;"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>';
+
+        const rules = {
+          length: v => v.length >= 8,
+          uppercase: v => /[A-Z]/.test(v),
+          digit: v => /[0-9]/.test(v),
+          special: v => /[!@#$%^&*<>.]/.test(v)
+        };
+
+        function updateCriteria() {
+          const val = pwd.value || '';
+          document.querySelectorAll('#password-requirements [data-criteria]').forEach(el => {
+            const key = el.getAttribute('data-criteria');
+            const pass = rules[key] ? rules[key](val) : false;
+            const icon = el.querySelector('.criteria-icon');
+            if (pass) {
+              el.classList.remove('text-rose-600');
+              el.classList.add('text-emerald-600');
+              if (icon) icon.innerHTML = checkSvg;
+            } else {
+              el.classList.remove('text-emerald-600');
+              el.classList.add('text-rose-600');
+              if (icon) icon.innerHTML = crossSvg;
+            }
+          });
+        }
+
+        pwd.addEventListener('input', updateCriteria);
+        pwd.addEventListener('change', updateCriteria);
+        pwd.addEventListener('keyup', updateCriteria);
+        updateCriteria();
+      })();
+    </script>
 
   </div>
 </main>
