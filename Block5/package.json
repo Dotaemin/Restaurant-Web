@@ -1,0 +1,32 @@
+{
+  "name": "restaurant-management-app",
+  "version": "1.0.0",
+  "description": "Server-side rendered restaurant management system with Express, EJS, Tailwind CSS, Prisma ORM, and Supabase",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "build:css": "npx @tailwindcss/cli -i ./src/input.css -o ./public/css/styles.css --minify",
+    "prisma:generate": "prisma generate --schema=prisma/schema.prisma",
+    "prisma:push": "prisma db push --schema=prisma/schema.prisma",
+    "seed": "node prisma/seed.js",
+    "cleanup": "node scripts/cleanup.js",
+    "test": "node test/verify-auth.js && node test/verify.js",
+    "test:auth": "node test/verify-auth.js",
+    "test:app": "node test/verify.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.3.1",
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.7",
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
+    "method-override": "^3.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.0.0",
+    "prisma": "^6.3.1",
+    "tailwindcss": "^4.0.0"
+  }
+}

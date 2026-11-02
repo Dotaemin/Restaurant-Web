@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Chef {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  specialty String
+  dishes    Dish[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Ingredient {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  unit      String
+  dishes    Dish[]   @relation("DishIngredients")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Dish {
+  id          Int          @id @default(autoincrement())
+  name        String       @unique
+  description String
+  price       Float
+  category    String
+  available   Boolean      @default(true)
+  imageUrl    String
+  chefId      Int
+  chef        Chef         @relation(fields: [chefId], references: [id], onDelete: Cascade)
+  ingredients Ingredient[] @relation("DishIngredients")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model User {
+  id                  Int                  @id @default(autoincrement())
+  username            String               @unique
+  email               String               @unique
+  passwordHash        String
+  salt                String
+  role                String               @default("Viewer")
+  status              String               @default("pending")
+  emailVerifiedAt     DateTime?
+  activationChallenge ActivationChallenge?
+  passwordChallenges  PasswordChallenge[]
+  sessions            Session[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model ActivationChallenge {
+  id          Int       @id @default(autoincrement())
+  userId      Int       @unique
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose     String    @default("account_activation")
+  otpHash     String
+  expiresAt   DateTime
+  attempts    Int       @default(0)
+  lockedUntil DateTime?
+  lastSentAt  DateTime?
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model PasswordChallenge {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model Session {
+  sid       String   @id
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}

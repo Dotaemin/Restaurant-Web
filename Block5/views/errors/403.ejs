@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-[#f5f5f5]">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= typeof title !== 'undefined' ? title : '403 - Access Forbidden' %> | B.H.T Diner</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="min-h-full flex flex-col font-sans text-slate-800 bg-[#f5f5f5] antialiased p-4 sm:p-6 lg:p-8">
+
+  <!-- Top Navigation Bar with Back Button in the Top Left Corner -->
+  <header class="w-full max-w-5xl mx-auto flex items-center justify-between mb-8">
+    <a href="<%= typeof backUrl !== 'undefined' && backUrl ? backUrl : '/dishes' %>" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#ba1414] hover:bg-[#991010] text-[#f5f5f5] font-bold text-sm shadow-md shadow-[#ba1414]/20 transition-all">
+      <span class="text-base">&larr;</span> Back to Menu
+    </a>
+
+    <!-- Brand Label -->
+    <div class="flex items-center gap-2 text-xs font-black text-[#ba1414] tracking-wider uppercase">
+      <span class="w-2.5 h-2.5 rounded-full bg-[#ba1414]"></span>
+      B.H.T Diner
+    </div>
+  </header>
+
+  <!-- Main Error Card -->
+  <main class="flex-1 flex items-center justify-center w-full max-w-2xl mx-auto py-6">
+    <div class="w-full bg-white rounded-3xl border border-[#ba1414]/20 shadow-xl shadow-[#ba1414]/5 p-8 sm:p-12 text-center">
+      
+      <!-- Icon & Status Pill -->
+      <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-[#ba1414]/10 text-[#ba1414] font-black text-3xl mb-6 shadow-inner border border-[#ba1414]/20">
+        403
+      </div>
+
+      <div>
+        <span class="inline-block px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest bg-[#ba1414]/10 text-[#ba1414] mb-3">
+          Access Restricted
+        </span>
+        <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+          Forbidden Request
+        </h1>
+      </div>
+
+      <!-- Cause of Forbidden Error -->
+      <div class="mt-6 p-5 rounded-2xl bg-amber-50 border border-amber-300 text-left">
+        <div class="text-xs font-bold text-amber-800 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+          <span class="font-black">🛡️</span> Reason:
+        </div>
+        <p class="text-sm font-bold text-amber-950 break-words leading-relaxed">
+          <%= typeof cause !== 'undefined' && cause ? cause : 'You do not have permission to access this administrative resource. An activated Admin account is required.' %>
+        </p>
+      </div>
+
+      <!-- Quick Action Buttons -->
+      <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+        <a href="/login" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-[#ba1414] hover:bg-[#991010] text-[#f5f5f5] font-bold text-sm shadow-md transition-all text-center">
+          🔑 Log In to Admin Account
+        </a>
+        <a href="/dishes" class="w-full sm:w-auto px-6 py-3 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-sm transition-all text-center">
+          🍽️ Return to Customer Menu
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="mt-auto py-6 text-center text-xs text-slate-400">
+    &copy; B.H.T Diner. All rights reserved.
+  </footer>
+</body>
+</html>

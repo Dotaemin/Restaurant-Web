@@ -1,0 +1,114 @@
+<%- include('../layouts/header') %>
+
+<main class="flex-1 flex items-center justify-center py-10 px-4 sm:px-6">
+  <div class="w-full max-w-md bg-white rounded-3xl border border-[#ba1414]/20 shadow-xl shadow-[#ba1414]/5 p-8 sm:p-10">
+    
+    <!-- Title Section -->
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#ba1414]/10 text-[#ba1414] mb-3 shadow-inner">
+        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+        </svg>
+      </div>
+      <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Create Account</h1>
+      <p class="text-xs text-slate-500 mt-1">Register for administrative access to B.H.T Diner</p>
+    </div>
+
+    <!-- Error Alert Banner -->
+    <% if (typeof error !== 'undefined' && error) { %>
+      <div class="mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-300 text-left">
+        <div class="text-xs font-bold text-rose-800 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+          <span>⚠️</span> Error
+        </div>
+        <p class="text-sm font-bold text-rose-950 break-words leading-relaxed">
+          <%= error %>
+        </p>
+      </div>
+    <% } %>
+
+    <!-- Registration Form -->
+    <form action="/register" method="POST" class="space-y-5">
+      
+      <!-- Username Field -->
+      <div>
+        <label for="username" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+          Username *
+        </label>
+        <input 
+          type="text" 
+          id="username" 
+          name="username" 
+          value="<%= typeof old !== 'undefined' && old.username ? old.username : '' %>"
+          required 
+          placeholder="e.g. chef_bht" 
+          class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-[#ba1414] focus:ring-2 focus:ring-[#ba1414]/20 outline-none transition-all text-sm font-medium"
+        />
+      </div>
+
+      <!-- Email Field (@gmail.com required) -->
+      <div>
+        <label for="email" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+          Email (@gmail.com) *
+        </label>
+        <input 
+          type="email" 
+          id="email" 
+          name="email" 
+          value="<%= typeof old !== 'undefined' && old.email ? old.email : '' %>"
+          required 
+          pattern=".+@gmail\.com"
+          title="Email must end with @gmail.com"
+          placeholder="yourname@gmail.com" 
+          class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-[#ba1414] focus:ring-2 focus:ring-[#ba1414]/20 outline-none transition-all text-sm font-medium"
+        />
+        <p class="text-2xs text-slate-400 mt-1">Must be a valid Gmail address (@gmail.com).</p>
+      </div>
+
+      <!-- Password Field -->
+      <div>
+        <label for="password" class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+          Password *
+        </label>
+        <input 
+          type="password" 
+          id="password" 
+          name="password" 
+          required 
+          minlength="8"
+          placeholder="••••••••" 
+          class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-[#ba1414] focus:ring-2 focus:ring-[#ba1414]/20 outline-none transition-all text-sm font-medium"
+        />
+        <div class="mt-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-2xs text-slate-600 space-y-1">
+          <div class="font-bold text-slate-700">Password Requirements:</div>
+          <div>• At least 8 characters in length</div>
+          <div>• At least 1 uppercase letter (A-Z)</div>
+          <div>• At least 1 digit (0-9)</div>
+          <div>• At least 1 special symbol (!, @, #, $, %, ^, &, *, &lt;, &gt;, .)</div>
+        </div>
+      </div>
+
+      <!-- Google reCAPTCHA v2 Widget -->
+      <div class="flex justify-center pt-2">
+        <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+        <div class="g-recaptcha" data-sitekey="<%= recaptchaSiteKey %>"></div>
+      </div>
+
+      <!-- Submit Button -->
+      <button 
+        type="submit" 
+        class="w-full py-3.5 px-4 rounded-xl bg-[#ba1414] hover:bg-[#991010] text-[#f5f5f5] font-black text-sm tracking-wide shadow-md shadow-[#ba1414]/20 hover:scale-[1.01] active:scale-[0.99] transition-all cursor-pointer"
+      >
+        Create Account &amp; Send OTP
+      </button>
+
+      <!-- Already have an account link -->
+      <div class="text-center pt-2 text-xs text-slate-500">
+        Already have an account? 
+        <a href="/login" class="font-bold text-[#ba1414] hover:underline">Log in here</a>
+      </div>
+    </form>
+
+  </div>
+</main>
+
+<%- include('../layouts/footer') %>

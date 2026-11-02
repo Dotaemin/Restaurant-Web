@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-[#f5f5f5]">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %> | B.H.T Diner</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="min-h-full flex flex-col font-sans text-slate-800 bg-[#f5f5f5] antialiased">
+
+  <!-- Page Pull Transition: Knife and Fork spinning from right to left pulling new page into view -->
+  <div class="page-pull-overlay" aria-hidden="true">
+    <div class="pull-curtain">
+      <div class="spinning-cutlery flex items-center justify-center">
+        <svg class="w-14 h-14 text-white drop-shadow-md" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <!-- Fork -->
+          <path d="M14 8v10c0 2.2 1.8 4 4 4s4-1.8 4-4V8" />
+          <path d="M18 8v14" />
+          <path d="M18 22v18" stroke-width="3" />
+          <!-- Knife -->
+          <path d="M30 8c0 8-1.5 13-4 15v17" stroke-width="3" />
+          <path d="M30 8v15" />
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Hamburger Menu Checkbox Toggle (Pure CSS, Zero JS) -->
+  <input type="checkbox" id="mobile-menu-toggle" class="peer hidden" aria-label="Toggle navigation menu">
+
+  <!-- Main Navigation Header -->
+  <header class="sticky top-0 z-40 bg-[#f5f5f5]/95 backdrop-blur-md border-b-2 border-[#ba1414] shadow-xs">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        
+        <!-- Brand Logo / Title -->
+        <a href="/dishes" class="flex items-center gap-3 group">
+          <div class="w-10 h-10 rounded-xl bg-[#ba1414] flex items-center justify-center text-[#f5f5f5] shadow-md shadow-[#ba1414]/20 group-hover:scale-105 transition-transform">
+            <span class="text-xl font-black tracking-tighter">BHT</span>
+          </div>
+          <div>
+            <span class="text-xl font-black tracking-tight text-[#ba1414] group-hover:opacity-90 transition-opacity">B.H.T Diner</span>
+            <span class="block text-2xs font-bold text-slate-500 tracking-widest uppercase">Classic Quality & Taste</span>
+          </div>
+        </a>
+
+        <!-- Desktop Navigation Links (Hidden on screens < 768px) -->
+        <nav class="hidden md:flex items-center gap-1 sm:gap-2">
+          <a href="/dishes" class="px-3 py-2 rounded-xl text-sm font-bold transition-all <%= typeof activeTab === 'undefined' ? 'bg-[#ba1414] text-[#f5f5f5] shadow-sm shadow-[#ba1414]/25' : 'text-[#ba1414] hover:bg-[#ba1414]/10' %>">
+            🍽️ Menu
+          </a>
+          <div class="h-5 w-px bg-[#ba1414]/30 mx-1"></div>
+          <a href="/admin/dishes" class="px-3 py-2 rounded-xl text-sm font-bold transition-all <%= typeof activeTab !== 'undefined' && activeTab === 'dishes' ? 'bg-[#ba1414] text-[#f5f5f5] shadow-sm shadow-[#ba1414]/25' : 'text-[#ba1414] hover:bg-[#ba1414]/10' %>">
+            📋 Dishes
+          </a>
+          <a href="/admin/chefs" class="px-3 py-2 rounded-xl text-sm font-bold transition-all <%= typeof activeTab !== 'undefined' && activeTab === 'chefs' ? 'bg-[#ba1414] text-[#f5f5f5] shadow-sm shadow-[#ba1414]/25' : 'text-[#ba1414] hover:bg-[#ba1414]/10' %>">
+            👨‍🍳 Chefs
+          </a>
+          <a href="/admin/ingredients" class="px-3 py-2 rounded-xl text-sm font-bold transition-all <%= typeof activeTab !== 'undefined' && activeTab === 'ingredients' ? 'bg-[#ba1414] text-[#f5f5f5] shadow-sm shadow-[#ba1414]/25' : 'text-[#ba1414] hover:bg-[#ba1414]/10' %>">
+            🧂 Ingredients
+          </a>
+          <div class="h-5 w-px bg-[#ba1414]/30 mx-1"></div>
+          <% if (typeof currentUser !== 'undefined' && currentUser) { %>
+            <div class="flex items-center gap-2 pl-1">
+              <span class="px-2.5 py-1.5 rounded-xl bg-white border border-[#ba1414]/30 text-xs font-bold text-[#ba1414] shadow-2xs">
+                👤 <%= currentUser.username %> (<%= currentUser.role %>)
+              </span>
+              <form action="/logout" method="POST" class="inline">
+                <button type="submit" class="px-3 py-1.5 rounded-xl bg-[#ba1414] hover:bg-[#991010] text-[#f5f5f5] text-xs font-bold shadow-xs transition-colors cursor-pointer">
+                  Log Out
+                </button>
+              </form>
+            </div>
+          <% } else { %>
+            <div class="flex items-center gap-1 pl-1">
+              <a href="/login" class="px-3 py-2 rounded-xl text-sm font-bold text-[#ba1414] hover:bg-[#ba1414]/10 transition-colors">
+                🔑 Log In
+              </a>
+              <a href="/register" class="px-3 py-2 rounded-xl text-xs font-bold bg-[#ba1414] text-[#f5f5f5] hover:bg-[#991010] transition-colors shadow-2xs">
+                Register
+              </a>
+            </div>
+          <% } %>
+        </nav>
+
+        <!-- Mobile Hamburger Toggle Button (Visible only on screens < 768px) -->
+        <label for="mobile-menu-toggle" class="md:hidden flex items-center justify-center w-10 h-10 rounded-xl border border-[#ba1414]/30 text-[#ba1414] hover:bg-[#ba1414]/10 cursor-pointer transition-colors shadow-2xs" aria-label="Open mobile navigation">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="6" x2="20" y2="6"></line>
+            <line x1="4" y1="12" x2="20" y2="12"></line>
+            <line x1="4" y1="18" x2="20" y2="18"></line>
+          </svg>
+        </label>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- Mobile Slide-out Drawer Overlay & Container (Zero JS, CSS Checkbox Hack) -->
+  <div class="mobile-drawer-overlay fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs transition-opacity duration-300 md:hidden pointer-events-none opacity-0 peer-checked:pointer-events-auto peer-checked:opacity-100">
+    <label for="mobile-menu-toggle" class="absolute inset-0 cursor-pointer" aria-label="Close menu overlay"></label>
+  </div>
+
+  <aside class="mobile-drawer fixed top-0 right-0 z-50 h-full w-72 max-w-[85vw] bg-[#f5f5f5] border-l-2 border-[#ba1414] shadow-2xl transform translate-x-full transition-transform duration-300 ease-in-out peer-checked:translate-x-0 md:hidden flex flex-col p-6">
+    
+    <!-- Drawer Header with Brand & Close Button -->
+    <div class="flex items-center justify-between pb-4 border-b border-[#ba1414]/20 mb-6">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-[#ba1414] flex items-center justify-center text-[#f5f5f5] font-black text-sm shadow-xs">
+          BHT
+        </div>
+        <div>
+          <span class="font-black text-base text-[#ba1414] block leading-tight">B.H.T Diner</span>
+          <span class="text-2xs font-semibold text-slate-500 uppercase tracking-widest">Mobile Menu</span>
+        </div>
+      </div>
+      <label for="mobile-menu-toggle" class="w-9 h-9 rounded-xl border border-[#ba1414]/30 flex items-center justify-center text-[#ba1414] hover:bg-[#ba1414]/10 cursor-pointer transition-colors" aria-label="Close menu">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </label>
+    </div>
+
+    <!-- Drawer Navigation Links -->
+    <nav class="flex flex-col gap-2.5 flex-1">
+      <a href="/dishes" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all <%= typeof activeTab === 'undefined' ? 'bg-[#ba1414] text-[#f5f5f5] shadow-sm shadow-[#ba1414]/25' : 'text-[#ba1414] hover:bg-[#ba1414]/10 bg-white/70 border border-[#ba1414]/20' %>">
+        <span class="text-lg">🍽️</span> Menu
+      </a>
+      <a href="/admin/dishes" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all <%= typeof activeTab !== 'undefined' && activeTab === 'dishes' ? 'bg-[#ba1414] text-[#f5f5f5] shadow-sm shadow-[#ba1414]/25' : 'text-[#ba1414] hover:bg-[#ba1414]/10 bg-white/70 border border-[#ba1414]/20' %>">
+        <span class="text-lg">📋</span> Dishes Management
+      </a>
+      <a href="/admin/chefs" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all <%= typeof activeTab !== 'undefined' && activeTab === 'chefs' ? 'bg-[#ba1414] text-[#f5f5f5] shadow-sm shadow-[#ba1414]/25' : 'text-[#ba1414] hover:bg-[#ba1414]/10 bg-white/70 border border-[#ba1414]/20' %>">
+        <span class="text-lg">👨‍🍳</span> Chefs Management
+      </a>
+      <a href="/admin/ingredients" class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all <%= typeof activeTab !== 'undefined' && activeTab === 'ingredients' ? 'bg-[#ba1414] text-[#f5f5f5] shadow-sm shadow-[#ba1414]/25' : 'text-[#ba1414] hover:bg-[#ba1414]/10 bg-white/70 border border-[#ba1414]/20' %>">
+        <span class="text-lg">🧂</span> Ingredients Management
+      </a>
+      
+      <div class="h-px bg-[#ba1414]/20 my-2"></div>
+      
+      <% if (typeof currentUser !== 'undefined' && currentUser) { %>
+        <div class="p-3 rounded-xl bg-white/80 border border-[#ba1414]/20 text-xs font-bold text-slate-800">
+          <div class="text-[#ba1414] font-black">👤 <%= currentUser.username %></div>
+          <div class="text-2xs text-slate-500"><%= currentUser.role %> Account</div>
+          <form action="/logout" method="POST" class="mt-2.5">
+            <button type="submit" class="w-full py-2 rounded-lg bg-[#ba1414] hover:bg-[#991010] text-[#f5f5f5] text-xs font-bold transition-colors cursor-pointer">
+              Log Out
+            </button>
+          </form>
+        </div>
+      <% } else { %>
+        <div class="flex flex-col gap-2">
+          <a href="/login" class="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-[#ba1414] border border-[#ba1414]/30 hover:bg-[#ba1414]/10 transition-colors">
+            🔑 Log In
+          </a>
+          <a href="/register" class="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-[#ba1414] text-[#f5f5f5] hover:bg-[#991010] transition-colors shadow-2xs">
+            Create Account
+          </a>
+        </div>
+      <% } %>
+    </nav>
+
+    <!-- Drawer Footer -->
+    <div class="pt-4 border-t border-[#ba1414]/20 text-xs text-slate-500 text-center font-medium">
+      &copy; <%= new Date().getFullYear() %> B.H.T Diner
+    </div>
+
+  </aside>
+
+  <!-- Global Alerts / Status Notification Banner -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4 w-full">
+    <% if (typeof msg !== 'undefined' && msg) { %>
+      <div class="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-800 flex items-center justify-between shadow-xs mb-4">
+        <div class="flex items-center gap-3">
+          <span class="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">✓</span>
+          <div>
+            <p class="font-bold text-sm">
+              <% if (msg === 'created') { %>Item successfully created!<% } %>
+              <% if (msg === 'updated') { %>Item details updated!<% } %>
+              <% if (msg === 'deleted') { %>Item successfully removed!<% } %>
+            </p>
+            <p class="text-xs text-emerald-700">Changes saved successfully.</p>
+          </div>
+        </div>
+      </div>
+    <% } %>
+
+    <% if (typeof error !== 'undefined' && error) { %>
+      <div class="p-4 rounded-2xl bg-rose-50 border border-rose-300 text-rose-800 flex items-center justify-between shadow-xs mb-4">
+        <div class="flex items-center gap-3">
+          <span class="w-8 h-8 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold">✕</span>
+          <div>
+            <p class="font-bold text-sm">
+              <% if (error === 'not_found' || error === 'dish_not_found' || error === 'chef_not_found' || error === 'ingredient_not_found' || error === 'invalid_id') { %>
+                Resource Not Found or Invalid ID.
+              <% } else if (error === 'db_connection_failed') { %>
+                Database Connection Notice: Database not reachable. Please verify connection.
+              <% } else if (error === 'name_duplicate') { %>
+                Duplicate Name Detected.
+              <% } else if (error === 'invalid_price') { %>
+                Invalid Price.
+              <% } else if (error === 'invalid_category') { %>
+                Invalid Category.
+              <% } else if (error === 'invalid_unit') { %>
+                Invalid Unit of Measurement.
+              <% } else if (error === 'description_required') { %>
+                Description Required.
+              <% } else if (error === 'ingredients_required') { %>
+                Ingredients Required.
+              <% } else if (error === 'chef_required' || error === 'chef_not_found') { %>
+                Invalid Chef Selection.
+              <% } else { %>
+                Invalid Submission. Please check required fields.
+              <% } %>
+            </p>
+            <p class="text-xs text-rose-700">
+              <% if (typeof errorMessage !== 'undefined' && errorMessage) { %>
+                <%= errorMessage %>
+              <% } else if (error === 'name_duplicate') { %>
+                An entry with this name already exists in the database. Names must be unique.
+              <% } else if (error === 'invalid_price') { %>
+                Price cannot be negative. Please enter 0 or a positive number.
+              <% } else if (error === 'invalid_category') { %>
+                Category must be one of: Main Course, Appetizer, Dessert, or Beverage.
+              <% } else if (error === 'invalid_unit') { %>
+                Unit must be typed as one of: kg, g, ml, l, tbsp, pcs, bunches.
+              <% } else if (error === 'description_required') { %>
+                Description must not be left blank.
+              <% } else if (error === 'ingredients_required') { %>
+                You must select at least one ingredient for the dish.
+              <% } else if (error === 'chef_required' || error === 'chef_not_found') { %>
+                You must select an existing chef from the database.
+              <% } else if (error === 'name_required') { %>
+                Name cannot be blank.
+              <% } else if (error === 'specialty_required') { %>
+                Chef specialty cannot be blank.
+              <% } else { %>
+                Please ensure all required constraints are satisfied.
+              <% } %>
+            </p>
+          </div>
+        </div>
+      </div>
+    <% } %>
+  </div>
+
+  <!-- Main Content Container with Pull-in Animation -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 page-pull-content">
