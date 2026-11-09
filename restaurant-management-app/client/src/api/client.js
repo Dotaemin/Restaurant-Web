@@ -84,9 +84,11 @@ class RestaurantApiClient {
     if (json && json.ok === false) {
       return {
         ok: false,
-        status: 200,
+                status: 200,
         level: 3,
         requireCaptcha: json?.requireCaptcha || false,
+        requireActivation: json?.requireActivation || json.error?.code === 'ACTIVATION_REQUIRED' || false,
+        email: json?.email || null,
         error: {
           level: 3,
           code: json.error?.code || 'BUSINESS_LOGIC_ERROR',

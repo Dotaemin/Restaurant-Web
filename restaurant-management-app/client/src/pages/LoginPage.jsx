@@ -3,6 +3,12 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
 import { Lock, AlertCircle, CheckCircle2, Loader2, Eye, EyeOff } from 'lucide-react';
 
+function buildActivationUrl(email) {
+  const params = new URLSearchParams({ msg: 'activation_required' });
+  if (email) params.set('email', email);
+  return `/activation?${params.toString()}`;
+}
+
 export default function LoginPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -57,6 +63,8 @@ export default function LoginPage() {
 
     if (res?.ok) {
       window.location.href = '/dishes';
+    } else if (res?.requireActivation) {
+      navigate(buildActivationUrl(res.email));
     } else {
       setError(res?.error?.message || 'Please check your details and try retyping your Email/Username and Password.');
       if (res?.requireCaptcha || res?.status === 429) {

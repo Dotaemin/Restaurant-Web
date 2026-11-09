@@ -461,19 +461,6 @@ const handleLogin = async (req, res) => {
       return renderLoginError(false);
     }
 
-    // If account is still pending, redirect user to the activation screen
-    if (user.status === 'pending') {
-      return res.status(200).json({
-        ok: false,
-        requireActivation: true,
-        email: user.email,
-        error: {
-          code: 'ACTIVATION_REQUIRED',
-          message: 'Please activate your account before logging in.'
-        }
-      });
-    }
-
     const now = new Date();
 
     // Check account lockout (5 failed attempts -> 3 minutes lockout)
