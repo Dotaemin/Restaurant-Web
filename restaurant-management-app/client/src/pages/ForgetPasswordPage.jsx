@@ -77,7 +77,7 @@ export default function ForgetPasswordPage() {
               className="w-full py-3 px-4 rounded-xl bg-[#ba1414] text-white font-black text-sm hover:bg-[#ba1414]/90 active:scale-[0.99] transition-all shadow-md shadow-[#ba1414]/25 cursor-pointer flex items-center justify-center gap-2"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              <span>{loading ? 'Sending Instructions...' : 'Send Reset Instructions'}</span>
+              <span>{loading ? 'Sending Link...' : 'Send Reset Link'}</span>
             </button>
           </div>
         </form>

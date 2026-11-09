@@ -6,6 +6,12 @@
   navigation: auto;
 }
 
+/* Disable Microsoft Edge transient password reveal & clear buttons */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none;
+}
+
 /* Custom Color Tokens & Variables */
 :root {
   --color-primary: #ba1414;

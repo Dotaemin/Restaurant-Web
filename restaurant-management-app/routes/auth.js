@@ -32,12 +32,7 @@ function sanitizeUser(user) {
 
 // Helper to determine if incoming request expects JSON response
 function isJsonRequest(req) {
-  return (
-    req.xhr ||
-    req.originalUrl.startsWith('/api/') ||
-    (req.headers.accept && req.headers.accept.includes('application/json')) ||
-    (req.headers['content-type'] && req.headers['content-type'].includes('application/json'))
-  );
+  return true;
 }
 
 // GET /api/auth/me - Returns current logged in user (or null)
@@ -60,16 +55,7 @@ router.get('/api/auth/config', (req, res) => {
 // 1. REGISTRATION
 // ==========================================
 
-// GET /register
-router.get('/register', requireGuest, (req, res) => {
-  res.render('auth/register', {
-    title: 'Register - B.H.T Diner',
-    error: req.query.error || null,
-    errorMessage: null,
-    formData: {},
-    recaptchaSiteKey: RECAPTCHA_SITE_KEY
-  });
-});
+
 
 // POST /register and POST /api/auth/register
 const handleRegister = async (req, res) => {
@@ -210,32 +196,7 @@ router.post('/api/auth/register', handleRegister);
 // 2. ACTIVATION
 // ==========================================
 
-// GET /activation
-router.get('/activation', async (req, res) => {
-  const email = req.query.email || '';
-  const error = req.query.error || null;
-  const msg = req.query.msg || null;
 
-  let remainingAttempts = 3;
-  if (email) {
-    const user = await prisma.user.findUnique({
-      where: { email: email.trim().toLowerCase() },
-      include: { activationChallenge: true }
-    });
-    if (user && user.activationChallenge) {
-      remainingAttempts = Math.max(0, 3 - (user.activationChallenge.attempts || 0));
-    }
-  }
-
-  res.render('auth/activation', {
-    title: 'Account Activation - B.H.T Diner',
-    email,
-    error,
-    errorMessage: null,
-    msg,
-    remainingAttempts
-  });
-});
 
 // POST /activation and POST /api/auth/activation
 const handleActivation = async (req, res) => {
@@ -450,17 +411,7 @@ router.post('/api/auth/activation/resend', handleActivationResend);
 // 3. LOGIN & BRUTE FORCE PROTECTION
 // ==========================================
 
-// GET /login
-router.get('/login', requireGuest, async (req, res) => {
-  res.render('auth/login', {
-    title: 'Sign In - B.H.T Diner',
-    error: req.query.error || null,
-    errorMessage: null,
-    msg: req.query.msg || null,
-    requireCaptcha: false,
-    recaptchaSiteKey: RECAPTCHA_SITE_KEY
-  });
-});
+
 
 // POST /login and POST /api/auth/login
 const handleLogin = async (req, res) => {
@@ -508,6 +459,19 @@ const handleLogin = async (req, res) => {
 
     if (!user) {
       return renderLoginError(false);
+    }
+
+    // If account is still pending, redirect user to the activation screen
+    if (user.status === 'pending') {
+      return res.status(200).json({
+        ok: false,
+        requireActivation: true,
+        email: user.email,
+        error: {
+          code: 'ACTIVATION_REQUIRED',
+          message: 'Please activate your account before logging in.'
+        }
+      });
     }
 
     const now = new Date();
@@ -681,15 +645,7 @@ router.post('/api/auth/logout', handleLogout);
 // 5. FORGET PASSWORD & RESET TOKEN
 // ==========================================
 
-// GET /forget
-router.get('/forget', (req, res) => {
-  res.render('auth/forget', {
-    title: 'Forget Password - B.H.T Diner',
-    error: req.query.error || null,
-    msg: req.query.msg || null,
-    errorMessage: null
-  });
-});
+
 
 // POST /forget and POST /api/auth/forget
 const handleForget = async (req, res) => {
@@ -783,51 +739,7 @@ const handleForget = async (req, res) => {
 router.post('/forget', handleForget);
 router.post('/api/auth/forget', handleForget);
 
-// GET /reset
-router.get('/reset', async (req, res) => {
-  const token = req.query.token || '';
 
-  if (!token) {
-    return res.status(400).render('errors/400', {
-      title: 'Invalid Request',
-      cause: 'A password reset token is required to access this page.',
-      backUrl: '/login'
-    });
-  }
-
-  try {
-    const tokenHash = hashResetToken(token);
-    const challenge = await prisma.passwordChallenge.findFirst({
-      where: {
-        tokenHash,
-        usedAt: null,
-        expiresAt: { gt: new Date() }
-      }
-    });
-
-    if (!challenge) {
-      return res.status(400).render('errors/400', {
-        title: 'Reset Link Expired or Invalid',
-        cause: 'This password reset link is invalid or has already been used. Please request a new one.',
-        backUrl: '/forget'
-      });
-    }
-
-    res.render('auth/reset', {
-      title: 'Set New Password - B.H.T Diner',
-      token,
-      error: null,
-      errorMessage: null
-    });
-  } catch (err) {
-    console.error('Reset GET error:', err.message);
-    return res.status(400).render('errors/400', {
-      title: 'Error',
-      cause: 'Unable to verify reset link. Please try again.',
-      backUrl: '/forget'
-    });
-  }
-});
 
 // POST /reset and POST /api/auth/reset
 const handleReset = async (req, res) => {

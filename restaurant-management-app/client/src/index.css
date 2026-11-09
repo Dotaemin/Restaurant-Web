@@ -28,6 +28,12 @@
     min-height: 100vh;
   }
 
+  /* Disable Microsoft Edge transient password reveal & clear buttons */
+  input::-ms-reveal,
+  input::-ms-clear {
+    display: none;
+  }
+
   /* Maintain Number Alignment in Tables */
   table, th, td, .tabular-nums {
     font-variant-numeric: tabular-nums;

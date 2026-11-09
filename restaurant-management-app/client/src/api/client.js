@@ -68,6 +68,8 @@ class RestaurantApiClient {
         status: response.status,
         level: 2,
         requireCaptcha: json?.requireCaptcha || false,
+        requireActivation: json?.requireActivation || json?.error?.code === 'ACTIVATION_REQUIRED' || false,
+        email: json?.email || null,
         error: {
           level: 2,
           status: response.status,

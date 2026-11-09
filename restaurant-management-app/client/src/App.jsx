@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
+import ProtectedRoute from './components/ProtectedRoute';
 
 import DishesPage from './pages/DishesPage';
 import DishDetailPage from './pages/DishDetailPage';
@@ -38,19 +39,22 @@ export default function App() {
           <Route path="/dishes/infinite-scroll" element={<DishesPage paginationMode="infinite-scroll" />} />
           <Route path="/dishes/:id" element={<DishDetailPage />} />
 
-          {/* Admin Dishes Routes */}
-          <Route path="/admin/dishes" element={<AdminDishesPage />} />
-          <Route path="/admin/dishes/new" element={<AdminDishesPage />} />
-          <Route path="/admin/dishes/:id/edit" element={<AdminDishEditPage />} />
-          <Route path="/admin/dish" element={<Navigate to="/admin/dishes" replace />} />
+          {/* Protected Admin Routes */}
+          <Route element={<ProtectedRoute />}>
+            {/* Admin Dishes Routes */}
+            <Route path="/admin/dishes" element={<AdminDishesPage />} />
+            <Route path="/admin/dishes/new" element={<AdminDishesPage />} />
+            <Route path="/admin/dishes/:id/edit" element={<AdminDishEditPage />} />
+            <Route path="/admin/dish" element={<Navigate to="/admin/dishes" replace />} />
 
-          {/* Admin Chefs Routes */}
-          <Route path="/admin/chefs" element={<AdminChefsPage />} />
-          <Route path="/admin/chef" element={<Navigate to="/admin/chefs" replace />} />
+            {/* Admin Chefs Routes */}
+            <Route path="/admin/chefs" element={<AdminChefsPage />} />
+            <Route path="/admin/chef" element={<Navigate to="/admin/chefs" replace />} />
 
-          {/* Admin Ingredients Routes */}
-          <Route path="/admin/ingredients" element={<AdminIngredientsPage />} />
-          <Route path="/admin/ingredient" element={<Navigate to="/admin/ingredients" replace />} />
+            {/* Admin Ingredients Routes */}
+            <Route path="/admin/ingredients" element={<AdminIngredientsPage />} />
+            <Route path="/admin/ingredient" element={<Navigate to="/admin/ingredients" replace />} />
+          </Route>
 
           {/* Error Pages */}
           <Route path="/bad-request" element={<BadRequestPage />} />

@@ -7,14 +7,25 @@ export default function ActivationPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const email = searchParams.get('email') || '';
+  const emailParam = searchParams.get('email') || '';
   const initialMsg = searchParams.get('msg');
 
+  const [email, setEmail] = useState(emailParam);
   const [otp, setOtp] = useState('');
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(
-    initialMsg === 'otp_sent' ? 'Activation code has been dispatched to your email!' : null
+    initialMsg === 'otp_sent'
+      ? 'Activation code has been dispatched to your email!'
+      : initialMsg === 'activation_required'
+      ? 'Your account is pending activation. Please enter the verification code sent to your email.'
+      : null
   );
+
+  useEffect(() => {
+    if (emailParam) {
+      setEmail(emailParam);
+    }
+  }, [emailParam]);
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [remainingAttempts, setRemainingAttempts] = useState(3);
@@ -32,6 +43,10 @@ export default function ActivationPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!email) {
+      setError('Please enter your Gmail address.');
+      return;
+    }
     setError(null);
     setLoading(true);
 
@@ -51,6 +66,10 @@ export default function ActivationPage() {
   };
 
   const handleResend = async () => {
+    if (!email) {
+      setError('Please provide your Gmail address to resend the code.');
+      return;
+    }
     if (cooldownSeconds > 0 || resending) return;
     setError(null);
     setResending(true);
@@ -75,10 +94,16 @@ export default function ActivationPage() {
             <Mail className="w-7 h-7" />
           </div>
           <h1 className="text-2xl font-black text-[#ba1414] tracking-tight">Activate Your Account</h1>
-          <p className="text-xs text-slate-500 mt-1">
-            We sent a 6-digit verification code to{' '}
-            <span className="font-bold text-slate-800">{email || 'your email'}</span>
-          </p>
+          {emailParam ? (
+            <p className="text-xs text-slate-500 mt-1">
+              We sent a 6-digit verification code to{' '}
+              <span className="font-bold text-slate-800">{email}</span>
+            </p>
+          ) : (
+            <p className="text-xs text-slate-500 mt-1">
+              Enter your registered Gmail address and the 6-digit code to activate your account.
+            </p>
+          )}
         </div>
 
         {successMsg && (
@@ -96,6 +121,21 @@ export default function ActivationPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {!emailParam && (
+            <div>
+              <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
+                Gmail Address
+              </label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="yourname@gmail.com"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:border-[#ba1414] focus:ring-2 focus:ring-[#ba1414]/20 text-sm font-medium transition-all mb-2"
+              />
+            </div>
+          )}
           <div>
             <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1 text-center">
               Enter 6-Digit Code
