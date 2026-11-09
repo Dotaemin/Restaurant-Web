@@ -5,6 +5,7 @@ const cookieParser = require('cookie-parser');
 const methodOverride = require('method-override');
 
 const { sessionMiddleware } = require('./lib/authMiddleware');
+const { csrfProtection } = require('./lib/csrf');   // with the other requires
 
 const authRouter = require('./routes/auth');
 const apiDishesRouter = require('./routes/api/dishes');
@@ -20,7 +21,7 @@ app.use(cors({
   origin: allowedOrigin,
   credentials: true,
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-HTTP-Method-Override']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-HTTP-Method-Override', 'X-CSRF-Token']
 }));
 
 // Cookie Parser & Request body parsers
@@ -42,6 +43,8 @@ app.use(methodOverride((req) => {
 
 // Global session authentication middleware (extracts user and session from JWT cookie)
 app.use(sessionMiddleware);
+// CSRF protection: must come directly AFTER sessionMiddleware
+app.use(csrfProtection);
 
 // Root health & API info endpoint (replaces SSR index)
 app.get('/', (req, res) => {

@@ -138,7 +138,7 @@ async function signSessionJwt(sessionId, user) {
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setSubject(String(user.id))
     .setIssuedAt()
-    .setExpirationTime('7d')
+    .setExpirationTime('15m')
     .sign(JWT_SECRET_KEY);
 }
 
@@ -154,6 +154,18 @@ async function verifySessionJwt(jwtString) {
   }
 }
 
+function generateCsrfToken(sessionId) {
+  return crypto.createHmac('sha256', JWT_SECRET_STRING)
+    .update('csrf:' + sessionId).digest('hex');
+}
+
+function verifyCsrfToken(sessionId, token) {
+  if (!sessionId || typeof token !== 'string') return false;
+  const expected = Buffer.from(generateCsrfToken(sessionId));
+  const given = Buffer.from(token);
+  return expected.length === given.length && crypto.timingSafeEqual(expected, given);
+}
+
 module.exports = {
   RECAPTCHA_SITE_KEY,
   generate5DigitSalt,
@@ -167,5 +179,7 @@ module.exports = {
   validateEmail,
   verifyRecaptcha,
   signSessionJwt,
-  verifySessionJwt
+  verifySessionJwt,
+  generateCsrfToken,
+  verifyCsrfToken
 };

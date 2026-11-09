@@ -12,7 +12,9 @@
  * 5. Pages never make direct HTTP calls.
  */
 class RestaurantApiClient {
+  
   constructor(baseUrl = 'http://localhost:3000/api') {
+    this.csrfToken = null;
     this.baseUrl = baseUrl;
     this.defaultHeaders = {
       'Content-Type': 'application/json',
@@ -25,14 +27,16 @@ class RestaurantApiClient {
    */
   async request(endpoint, options = {}) {
     const url = `${this.baseUrl}${endpoint}`;
+    const method = (options.method || 'GET').toUpperCase();
     const config = {
-      credentials: 'include', // Ensure cookies (auth_token) are sent across origins
-      ...options,
-      headers: {
-        ...this.defaultHeaders,
-        ...options.headers,
-      },
-    };
+    credentials: 'include',
+    ...options,
+    headers: {
+      ...this.defaultHeaders,
+      ...(method !== 'GET' && this.csrfToken ? { 'X-CSRF-Token': this.csrfToken } : {}),
+      ...options.headers,
+    },
+};
 
     let response;
     // LEVEL 1: Connection error and CORS blocking
@@ -99,6 +103,7 @@ class RestaurantApiClient {
     }
 
     // Success response
+    if (json && json.csrfToken !== undefined) this.csrfToken = json.csrfToken;
     return json;
   }
 

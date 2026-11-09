@@ -13,7 +13,9 @@ const {
   validatePasswordComplexity,
   validateEmail,
   verifyRecaptcha,
-  signSessionJwt
+  signSessionJwt,
+  generateCsrfToken,
+  verifyCsrfToken
 } = require('../lib/security');
 const { sendActivationOtpEmail, sendPasswordResetEmail } = require('../lib/mailer');
 const { requireGuest } = require('../lib/authMiddleware');
@@ -39,7 +41,8 @@ function isJsonRequest(req) {
 router.get('/api/auth/me', (req, res) => {
   return res.json({
     ok: true,
-    user: req.user ? sanitizeUser(req.user) : null
+    user: req.user ? sanitizeUser(req.user) : null,
+    csrfToken: req.sessionId ? generateCsrfToken(req.sessionId) : null
   });
 });
 
@@ -554,7 +557,7 @@ const handleLogin = async (req, res) => {
 
     // Store Session into database
     const sid = generateSessionId();
-    const sessionExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const sessionExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
     await prisma.session.create({
       data: {
@@ -572,13 +575,14 @@ const handleLogin = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000
+      maxAge: 15 * 60 * 1000
     });
 
     if (isJsonRequest(req)) {
       return res.status(200).json({
         ok: true,
-        user: sanitizeUser(user)
+        user: sanitizeUser(user),
+        csrfToken: generateCsrfToken(sid)
       });
     }
 
