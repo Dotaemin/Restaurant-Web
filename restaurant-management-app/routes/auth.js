@@ -565,7 +565,7 @@ const handleLogin = async (req, res) => {
     });
 
     // Sign JWT using jose
-    const jwtToken = await signSessionJwt(sid);
+    const jwtToken = await signSessionJwt(sid, user);
 
     // Set cookie
     res.cookie('auth_token', jwtToken, {

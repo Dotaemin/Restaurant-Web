@@ -37,6 +37,12 @@ async function sessionMiddleware(req, res, next) {
       }
       return next();
     }
+    
+    // Token subject (user id) must belong to the session's user
+    if (payload.sub && payload.sub !== String(session.userId)) {
+      res.clearCookie('auth_token');
+      return next();
+    }
 
     // Attach user (never expose password hash or salt)
     const safeUser = { ...session.user };

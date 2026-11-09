@@ -127,11 +127,16 @@ async function verifyRecaptcha(recaptchaResponse, remoteIp) {
 }
 
 /**
- * Sign session ID into JWT using jose library
+ * Sign session JWT using jose library.
+ * Header : { alg: 'HS256', typ: 'JWT' }
+ * Payload: { sid, role, sub (user id), iat, exp }
+ * NOTE: role is informational only. Authorization must keep using the
+ * role loaded from the database (req.user.role), never the token's role.
  */
-async function signSessionJwt(sessionId) {
-  return await new SignJWT({ sid: sessionId })
-    .setProtectedHeader({ alg: 'HS256' })
+async function signSessionJwt(sessionId, user) {
+  return await new SignJWT({ sid: sessionId, role: user.role })
+    .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+    .setSubject(String(user.id))
     .setIssuedAt()
     .setExpirationTime('7d')
     .sign(JWT_SECRET_KEY);
