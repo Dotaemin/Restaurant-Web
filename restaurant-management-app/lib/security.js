@@ -60,13 +60,6 @@ function hashResetToken(token) {
 }
 
 /**
- * Generate a secure random session ID (UUID v4)
- */
-function generateSessionId() {
-  return crypto.randomUUID();
-}
-
-/**
  * Validate password complexity:
  * - At least 8 characters
  * - At least 1 capitalized letter
@@ -133,8 +126,8 @@ async function verifyRecaptcha(recaptchaResponse, remoteIp) {
  * NOTE: role is informational only. Authorization must keep using the
  * role loaded from the database (req.user.role), never the token's role.
  */
-async function signSessionJwt(sessionId, user) {
-  return await new SignJWT({ sid: sessionId, role: user.role })
+async function signSessionJwt(user) {
+  return await new SignJWT({ role: user.role })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
     .setSubject(String(user.id))
     .setIssuedAt()
@@ -154,14 +147,14 @@ async function verifySessionJwt(jwtString) {
   }
 }
 
-function generateCsrfToken(sessionId) {
+function generateCsrfToken(claims) {
   return crypto.createHmac('sha256', JWT_SECRET_STRING)
-    .update('csrf:' + sessionId).digest('hex');
+    .update(`csrf:${claims.sub}:${claims.iat}`).digest('hex');
 }
 
-function verifyCsrfToken(sessionId, token) {
-  if (!sessionId || typeof token !== 'string') return false;
-  const expected = Buffer.from(generateCsrfToken(sessionId));
+function verifyCsrfToken(claims, token) {
+  if (!claims || !claims.sub || !claims.iat || typeof token !== 'string') return false;
+  const expected = Buffer.from(generateCsrfToken(claims));
   const given = Buffer.from(token);
   return expected.length === given.length && crypto.timingSafeEqual(expected, given);
 }
@@ -174,7 +167,6 @@ module.exports = {
   generate6DigitOtp,
   generateResetToken,
   hashResetToken,
-  generateSessionId,
   validatePasswordComplexity,
   validateEmail,
   verifyRecaptcha,

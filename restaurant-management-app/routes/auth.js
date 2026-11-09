@@ -9,13 +9,12 @@ const {
   generate6DigitOtp,
   generateResetToken,
   hashResetToken,
-  generateSessionId,
   validatePasswordComplexity,
   validateEmail,
   verifyRecaptcha,
   signSessionJwt,
-  generateCsrfToken,
-  verifyCsrfToken
+  verifySessionJwt,
+  generateCsrfToken
 } = require('../lib/security');
 const { sendActivationOtpEmail, sendPasswordResetEmail } = require('../lib/mailer');
 const { requireGuest } = require('../lib/authMiddleware');
@@ -42,7 +41,7 @@ router.get('/api/auth/me', (req, res) => {
   return res.json({
     ok: true,
     user: req.user ? sanitizeUser(req.user) : null,
-    csrfToken: req.sessionId ? generateCsrfToken(req.sessionId) : null
+    csrfToken: req.authClaims ? generateCsrfToken(req.authClaims) : null
   });
 });
 
@@ -555,21 +554,9 @@ const handleLogin = async (req, res) => {
       }
     });
 
-    // Store Session into database
-    const sid = generateSessionId();
-    const sessionExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
-
-    await prisma.session.create({
-      data: {
-        sid,
-        userId: user.id,
-        expiresAt: sessionExpiresAt
-      }
-    });
-
-    // Sign JWT using jose
-    const jwtToken = await signSessionJwt(sid, user);
-
+    const jwtToken = await signSessionJwt(user);
+    const claims = await verifySessionJwt(jwtToken);  
+  
     // Set cookie
     res.cookie('auth_token', jwtToken, {
       httpOnly: true,
@@ -582,7 +569,7 @@ const handleLogin = async (req, res) => {
       return res.status(200).json({
         ok: true,
         user: sanitizeUser(user),
-        csrfToken: generateCsrfToken(sid)
+        csrfToken: generateCsrfToken(claims)
       });
     }
 
@@ -602,31 +589,13 @@ router.post('/api/auth/login', handleLogin);
 // ==========================================
 
 const handleLogout = async (req, res) => {
-  try {
-    const token = req.cookies ? req.cookies.auth_token : null;
-    if (token) {
-      const { verifySessionJwt } = require('../lib/security');
-      const payload = await verifySessionJwt(token);
-      if (payload && payload.sid) {
-        await prisma.session.delete({ where: { sid: payload.sid } }).catch(() => {});
-      }
-    }
+  // Stateless: nothing to delete server-side, just clear the cookie.
+  res.clearCookie('auth_token');
 
-    res.clearCookie('auth_token');
-
-    if (isJsonRequest(req)) {
-      return res.status(200).json({ ok: true, message: 'Logged out successfully.' });
-    }
-
-    return res.redirect('/login?msg=logged_out');
-  } catch (err) {
-    console.error('Logout error:', err.message);
-    res.clearCookie('auth_token');
-    if (isJsonRequest(req)) {
-      return res.status(200).json({ ok: true });
-    }
-    return res.redirect('/login');
+  if (isJsonRequest(req)) {
+    return res.status(200).json({ ok: true, message: 'Logged out successfully.' });
   }
+  return res.redirect('/login?msg=logged_out');
 };
 
 router.post('/logout', handleLogout);

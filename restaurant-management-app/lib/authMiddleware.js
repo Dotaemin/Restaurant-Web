@@ -9,7 +9,7 @@ const { verifySessionJwt } = require('./security');
 async function sessionMiddleware(req, res, next) {
   res.locals.currentUser = null;
   req.user = null;
-  req.sessionId = null;
+  req.authClaims = null;
 
   const token = req.cookies ? req.cookies.auth_token : null;
   if (!token) {
@@ -17,40 +17,25 @@ async function sessionMiddleware(req, res, next) {
   }
 
   try {
-    const payload = await verifySessionJwt(token);
-    if (!payload || !payload.sid) {
+    const payload = await verifySessionJwt(token); // null if bad signature or expired
+    const userId = payload ? Number(payload.sub) : NaN;
+    if (!payload || !Number.isInteger(userId)) {
       res.clearCookie('auth_token');
       return next();
     }
 
-    const session = await prisma.session.findUnique({
-      where: { sid: payload.sid },
-      include: { user: true }
-    });
-
-    if (!session || new Date() > new Date(session.expiresAt)) {
-      // Session has expired or was revoked (logout / old sid rejection)
-      res.clearCookie('auth_token');
-      if (session) {
-        // Clean up expired session from DB
-        await prisma.session.delete({ where: { sid: session.sid } }).catch(() => {});
-      }
-      return next();
-    }
-    
-    // Token subject (user id) must belong to the session's user
-    if (payload.sub && payload.sub !== String(session.userId)) {
-      res.clearCookie('auth_token');
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      res.clearCookie('auth_token'); // user was deleted after token was issued
       return next();
     }
 
-    // Attach user (never expose password hash or salt)
-    const safeUser = { ...session.user };
+    const safeUser = { ...user };
     delete safeUser.passwordHash;
     delete safeUser.salt;
 
     req.user = safeUser;
-    req.sessionId = session.sid;
+    req.authClaims = payload;
     res.locals.currentUser = safeUser;
     return next();
   } catch (err) {
