@@ -11,6 +11,12 @@ import AdminIngredientsPage from './pages/AdminIngredientsPage';
 import NotFoundPage from './pages/NotFoundPage';
 import BadRequestPage from './pages/BadRequestPage';
 
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import ActivationPage from './pages/ActivationPage';
+import ForgetPasswordPage from './pages/ForgetPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -18,6 +24,13 @@ export default function App() {
         <Routes>
           {/* Root redirect to customer menu */}
           <Route path="/" element={<Navigate to="/dishes" replace />} />
+
+          {/* Authentication Routes */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/activation" element={<ActivationPage />} />
+          <Route path="/forget" element={<ForgetPasswordPage />} />
+          <Route path="/reset" element={<ResetPasswordPage />} />
 
           {/* Customer Facing Routes (3 Demo Modes) */}
           <Route path="/dishes" element={<DishesPage paginationMode="page" />} />

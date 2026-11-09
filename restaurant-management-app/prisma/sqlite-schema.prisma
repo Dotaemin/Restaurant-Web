@@ -39,3 +39,58 @@ model Dish {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
+
+model User {
+  id                  Int                  @id @default(autoincrement())
+  username            String               @unique
+  email               String               @unique
+  passwordHash        String
+  salt                String
+  role                String               @default("Viewer")
+  status              String               @default("pending") // "pending" | "active"
+  emailVerifiedAt     DateTime?
+  
+  failedLoginAttempts Int?                 @default(0)
+  lastFailedLoginAt   DateTime?
+  lockoutUntil        DateTime?
+  
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  activationChallenge ActivationChallenge?
+  passwordChallenges PasswordChallenge[]
+  sessions           Session[]
+}
+
+model ActivationChallenge {
+  id          Int       @id @default(autoincrement())
+  userId      Int       @unique
+  purpose     String    @default("account_activation")
+  otp         String?
+  otpHash     String?
+  expiresAt   DateTime
+  attempts    Int       @default(0)
+  lockedUntil DateTime?
+  lastSentAt  DateTime?
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PasswordChallenge {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Session {
+  sid       String   @id
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

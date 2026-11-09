@@ -1,11 +1,31 @@
-import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, UtensilsCrossed, ChefHat, Carrot, BookOpen } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Menu, X, UtensilsCrossed, ChefHat, Carrot, BookOpen, LogIn, UserPlus, LogOut, User } from 'lucide-react';
 import PageTransition from './PageTransition';
+import api from '../api/client';
 
 export default function Layout({ children }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
   const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Check current user session on mount and route change
+    api.getCurrentUser().then((res) => {
+      if (res?.ok && res.user) {
+        setCurrentUser(res.user);
+      } else {
+        setCurrentUser(null);
+      }
+    });
+  }, [location.pathname]);
+
+  const handleLogout = async () => {
+    await api.logout();
+    setCurrentUser(null);
+    navigate('/login?msg=logged_out');
+  };
 
   const navLinks = [
     { to: '/dishes', label: 'Menu', icon: BookOpen },
@@ -58,6 +78,43 @@ export default function Layout({ children }) {
                   </Link>
                 );
               })}
+
+              <div className="h-5 w-px bg-white/30 mx-2" />
+
+              {/* Auth links (Desktop) */}
+              {currentUser ? (
+                <div className="flex items-center gap-2 pl-1">
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 text-xs font-bold text-white">
+                    <User className="w-3.5 h-3.5" />
+                    <span>{currentUser.username}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white/90 border border-white/30 hover:bg-white hover:text-[#ba1414] transition-all cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 pl-1">
+                  <Link
+                    to="/login"
+                    className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-bold text-[#f5f5f5] hover:bg-white/15 transition-all"
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>Sign In</span>
+                  </Link>
+                  <Link
+                    to="/register"
+                    className="flex items-center gap-1 px-3.5 py-2 rounded-lg text-xs font-black bg-white text-[#ba1414] hover:bg-white/90 transition-all shadow-sm"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Register</span>
+                  </Link>
+                </div>
+              )}
             </nav>
 
             {/* Hamburger Button for Mobile (<768px) */}
@@ -119,6 +176,47 @@ export default function Layout({ children }) {
                     </Link>
                   );
                 })}
+
+                <div className="border-t border-white/20 my-2 pt-2" />
+
+                {currentUser ? (
+                  <div className="flex flex-col gap-2">
+                    <div className="px-4 py-2 bg-white/10 rounded-lg text-xs font-bold flex items-center gap-2">
+                      <User className="w-4 h-4" />
+                      <span>{currentUser.username}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        handleLogout();
+                      }}
+                      className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-base font-semibold border border-white/30 hover:bg-white hover:text-[#ba1414] transition-all"
+                    >
+                      <LogOut className="w-5 h-5" />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <Link
+                      to="/login"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-base font-semibold border border-white/30 hover:bg-white/10 transition-all"
+                    >
+                      <LogIn className="w-5 h-5" />
+                      <span>Sign In</span>
+                    </Link>
+                    <Link
+                      to="/register"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-base font-black bg-white text-[#ba1414] hover:bg-white/90 transition-all shadow-sm"
+                    >
+                      <UserPlus className="w-5 h-5" />
+                      <span>Register</span>
+                    </Link>
+                  </div>
+                )}
               </nav>
 
               <div className="mt-auto pt-6 border-t border-white/20 text-xs text-white/70 text-center">
@@ -136,7 +234,7 @@ export default function Layout({ children }) {
         </PageTransition>
       </main>
 
-      {/* Footer - Strictly ONLY shows restaurant name and simple copyright line */}
+      {/* Footer */}
       <footer className="bg-white border-t border-gray-200 py-6 mt-auto">
         <div className="max-w-7xl mx-auto px-4 text-center">
           <p className="text-sm font-medium text-gray-700">

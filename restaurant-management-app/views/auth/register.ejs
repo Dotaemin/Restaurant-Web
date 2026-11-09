@@ -1,0 +1,114 @@
+<%- include('../layouts/header') %>
+
+<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+
+<div class="max-w-md mx-auto my-8">
+  <div class="bg-white rounded-3xl border-2 border-[#ba1414]/20 p-8 shadow-xl">
+    
+    <!-- Header -->
+    <div class="text-center mb-6">
+      <div class="w-14 h-14 mx-auto rounded-2xl bg-[#ba1414]/10 text-[#ba1414] flex items-center justify-center text-2xl font-black mb-3">
+        📝
+      </div>
+      <h1 class="text-2xl font-black text-[#ba1414] tracking-tight">Create an Account</h1>
+      <p class="text-xs text-slate-500 mt-1">Join B.H.T Diner to access our services</p>
+    </div>
+
+    <!-- Error Notice -->
+    <% if (typeof errorMessage !== 'undefined' && errorMessage) { %>
+      <div class="mb-5 p-4 rounded-2xl bg-rose-50 border border-rose-300 text-rose-800 text-sm font-semibold flex items-start gap-2.5">
+        <span class="text-base leading-none">⚠️</span>
+        <span><%= errorMessage %></span>
+      </div>
+    <% } %>
+
+    <!-- Form -->
+    <form action="/register" method="POST" class="space-y-4">
+      <div>
+        <label for="username" class="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
+          Username
+        </label>
+        <input
+          type="text"
+          id="username"
+          name="username"
+          required
+          value="<%= typeof formData !== 'undefined' && formData.username ? formData.username : '' %>"
+          placeholder="e.g. johndoe"
+          class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:border-[#ba1414] focus:ring-2 focus:ring-[#ba1414]/20 text-sm font-medium transition-all"
+        />
+      </div>
+
+      <div>
+        <label for="email" class="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
+          Gmail Address
+        </label>
+        <input
+          type="email"
+          id="email"
+          name="email"
+          required
+          value="<%= typeof formData !== 'undefined' && formData.email ? formData.email : '' %>"
+          placeholder="yourname@gmail.com"
+          class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:border-[#ba1414] focus:ring-2 focus:ring-[#ba1414]/20 text-sm font-medium transition-all"
+        />
+        <p class="text-2xs text-slate-400 mt-0.5">Must be an active @gmail.com address to receive your activation code.</p>
+      </div>
+
+      <div>
+        <label for="password" class="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
+          Password
+        </label>
+        <input
+          type="password"
+          id="password"
+          name="password"
+          required
+          placeholder="••••••••"
+          class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:border-[#ba1414] focus:ring-2 focus:ring-[#ba1414]/20 text-sm font-medium transition-all"
+        />
+        <p class="text-2xs text-slate-500 mt-1">
+          At least 8 characters, with 1 uppercase letter, 1 number, and 1 special symbol (!, @, #, $, %, ^, &, *, &lt;, &gt;, .).
+        </p>
+      </div>
+
+      <div>
+        <label for="confirmPassword" class="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
+          Confirm Password
+        </label>
+        <input
+          type="password"
+          id="confirmPassword"
+          name="confirmPassword"
+          required
+          placeholder="••••••••"
+          class="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:border-[#ba1414] focus:ring-2 focus:ring-[#ba1414]/20 text-sm font-medium transition-all"
+        />
+      </div>
+
+      <!-- Google reCAPTCHA v2 -->
+      <div class="pt-2 flex justify-center">
+        <div class="g-recaptcha" data-sitekey="<%= recaptchaSiteKey %>"></div>
+      </div>
+
+      <div class="pt-2">
+        <button
+          type="submit"
+          class="w-full py-3 px-4 rounded-xl bg-[#ba1414] text-white font-black text-sm hover:bg-[#ba1414]/90 active:scale-[0.99] transition-all shadow-md shadow-[#ba1414]/25 cursor-pointer"
+        >
+          Register & Send Activation Code
+        </button>
+      </div>
+    </form>
+
+    <div class="mt-6 text-center border-t border-slate-100 pt-4">
+      <p class="text-xs text-slate-500">
+        Already have an account?
+        <a href="/login" class="font-bold text-[#ba1414] hover:underline ml-1">Sign In</a>
+      </p>
+    </div>
+
+  </div>
+</div>
+
+<%- include('../layouts/footer') %>

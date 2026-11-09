@@ -8,17 +8,11 @@
  *    - Level 1: Connection error and CORS blocking (Network failure, fetch exception, CORS reject).
  *    - Level 2: Wrong URL or system error (HTTP 404, HTTP 500, non-200 technical status without 'ok').
  *    - Level 3: Business logic error reads error code (HTTP 200 with ok: false, e.g. VALIDATION_FAILED, NOT_FOUND).
- * 4. Resource-Based URLs:
- *    - GET /dishes: get all dishes
- *    - GET /dishes/:id: get specific dish with that id
- *    - POST /admin/...: add new dish / chef / ingredient
- *    - POST /admin/.../:id with Method override: PATCH for updates
- *    - POST /admin/.../:id with Method override: DELETE for deletes
+ * 4. Resource-Based URLs
  * 5. Pages never make direct HTTP calls.
  */
 class RestaurantApiClient {
   constructor(baseUrl = 'http://localhost:3000/api') {
-    // Original base URL and default headers configured in ONE spot
     this.baseUrl = baseUrl;
     this.defaultHeaders = {
       'Content-Type': 'application/json',
@@ -32,6 +26,7 @@ class RestaurantApiClient {
   async request(endpoint, options = {}) {
     const url = `${this.baseUrl}${endpoint}`;
     const config = {
+      credentials: 'include', // Ensure cookies (auth_token) are sent across origins
       ...options,
       headers: {
         ...this.defaultHeaders,
@@ -67,15 +62,17 @@ class RestaurantApiClient {
     // LEVEL 2: Wrong URL or system error (HTTP 404, 500, non-200 technical status without 'ok')
     if (!response.ok) {
       const is404 = response.status === 404;
+      const is429 = response.status === 429;
       return {
         ok: false,
         status: response.status,
         level: 2,
+        requireCaptcha: json?.requireCaptcha || false,
         error: {
           level: 2,
           status: response.status,
-          code: is404 ? 'INVALID_URL' : 'SYSTEM_ERROR',
-          message: json?.message || (is404 ? `The requested endpoint was not found (404): ${endpoint}` : 'A technical server error occurred.'),
+          code: json?.error?.code || (is429 ? 'TOO_MANY_ATTEMPTS' : is404 ? 'INVALID_URL' : 'SYSTEM_ERROR'),
+          message: json?.error?.message || json?.message || (is404 ? `The requested endpoint was not found: ${endpoint}` : 'A technical server error occurred.'),
           technicalDetails: json
         }
       };
@@ -87,6 +84,7 @@ class RestaurantApiClient {
         ok: false,
         status: 200,
         level: 3,
+        requireCaptcha: json?.requireCaptcha || false,
         error: {
           level: 3,
           code: json.error?.code || 'BUSINESS_LOGIC_ERROR',
@@ -101,12 +99,96 @@ class RestaurantApiClient {
   }
 
   // ==========================================================
-  // CUSTOMER RESOURCE ENDPOINTS
+  // AUTHENTICATION RESOURCE ENDPOINTS
   // ==========================================================
 
   /**
-   * GET /dishes: Get all dishes with server-paging, search, and category support
+   * Get current authenticated user
    */
+  getCurrentUser() {
+    return this.request('/auth/me', { method: 'GET' });
+  }
+
+  /**
+   * Get auth config (reCAPTCHA site key)
+   */
+  getAuthConfig() {
+    return this.request('/auth/config', { method: 'GET' });
+  }
+
+  /**
+   * POST /api/auth/register
+   */
+  register(data) {
+    return this.request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  /**
+   * POST /api/auth/activation
+   */
+  activate(data) {
+    return this.request('/auth/activation', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  /**
+   * POST /api/auth/activation/resend
+   */
+  resendActivation(data) {
+    return this.request('/auth/activation/resend', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  /**
+   * POST /api/auth/login
+   */
+  login(data) {
+    return this.request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  /**
+   * POST /api/auth/logout
+   */
+  logout() {
+    return this.request('/auth/logout', {
+      method: 'POST'
+    });
+  }
+
+  /**
+   * POST /api/auth/forget
+   */
+  forgetPassword(data) {
+    return this.request('/auth/forget', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  /**
+   * POST /api/auth/reset
+   */
+  resetPassword(data) {
+    return this.request('/auth/reset', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  // ==========================================================
+  // CUSTOMER RESOURCE ENDPOINTS
+  // ==========================================================
+
   getDishes(params = {}) {
     let query = '';
     if (typeof params === 'string') {
@@ -125,9 +207,6 @@ class RestaurantApiClient {
     return this.request(`/dishes${query}`, { method: 'GET' });
   }
 
-  /**
-   * GET /dishes/:id: Get a specific dish with that id
-   */
   getDish(id) {
     return this.request(`/dishes/${id}`, { method: 'GET' });
   }
@@ -136,9 +215,6 @@ class RestaurantApiClient {
   // ADMIN RESOURCE ENDPOINTS
   // ==========================================================
 
-  /**
-   * GET /admin/dishes: Get dishes for admin with server-paging, filters, and sorting
-   */
   getAdminDishes(params = {}) {
     const qp = new URLSearchParams();
     if (params.page !== undefined && params.page !== null) qp.set('page', params.page);
@@ -157,9 +233,6 @@ class RestaurantApiClient {
     return this.request(`/admin/dishes${query}`, { method: 'GET' });
   }
 
-  /**
-   * POST /admin/dishes: Add a new dish
-   */
   createDish(dishData) {
     return this.request('/admin/dishes', {
       method: 'POST',
@@ -167,9 +240,6 @@ class RestaurantApiClient {
     });
   }
 
-  /**
-   * POST /admin/dishes/:id with Method override: PATCH
-   */
   updateDish(id, dishData) {
     return this.request(`/admin/dishes/${id}`, {
       method: 'POST',
@@ -183,9 +253,6 @@ class RestaurantApiClient {
     });
   }
 
-  /**
-   * POST /admin/dishes/:id with Method override: DELETE
-   */
   deleteDish(id) {
     return this.request(`/admin/dishes/${id}`, {
       method: 'POST',
@@ -198,11 +265,6 @@ class RestaurantApiClient {
     });
   }
 
-  // ---------------- CHEFS ----------------
-
-  /**
-   * GET /admin/chefs: Get all chefs with optional server-paging, filter, and sorting
-   */
   getChefs(params = {}) {
     const qp = new URLSearchParams();
     if (params.page !== undefined && params.page !== null) qp.set('page', params.page);
@@ -215,16 +277,10 @@ class RestaurantApiClient {
     return this.request(`/admin/chefs${query}`, { method: 'GET' });
   }
 
-  /**
-   * GET /admin/chefs/:id: Get specific chef
-   */
   getChef(id) {
     return this.request(`/admin/chefs/${id}`, { method: 'GET' });
   }
 
-  /**
-   * POST /admin/chefs: Add a new chef
-   */
   createChef(chefData) {
     return this.request('/admin/chefs', {
       method: 'POST',
@@ -232,9 +288,6 @@ class RestaurantApiClient {
     });
   }
 
-  /**
-   * POST /admin/chefs/:id with Method override: PATCH
-   */
   updateChef(id, chefData) {
     return this.request(`/admin/chefs/${id}`, {
       method: 'POST',
@@ -248,9 +301,6 @@ class RestaurantApiClient {
     });
   }
 
-  /**
-   * POST /admin/chefs/:id with Method override: DELETE
-   */
   deleteChef(id) {
     return this.request(`/admin/chefs/${id}`, {
       method: 'POST',
@@ -263,11 +313,6 @@ class RestaurantApiClient {
     });
   }
 
-  // ---------------- INGREDIENTS ----------------
-
-  /**
-   * GET /admin/ingredients: Get all ingredients with optional server-paging, filter, and sorting
-   */
   getIngredients(params = {}) {
     const qp = new URLSearchParams();
     if (params.page !== undefined && params.page !== null) qp.set('page', params.page);
@@ -280,16 +325,10 @@ class RestaurantApiClient {
     return this.request(`/admin/ingredients${query}`, { method: 'GET' });
   }
 
-  /**
-   * GET /admin/ingredients/:id: Get specific ingredient
-   */
   getIngredient(id) {
     return this.request(`/admin/ingredients/${id}`, { method: 'GET' });
   }
 
-  /**
-   * POST /admin/ingredients: Add a new ingredient
-   */
   createIngredient(ingData) {
     return this.request('/admin/ingredients', {
       method: 'POST',
@@ -297,9 +336,6 @@ class RestaurantApiClient {
     });
   }
 
-  /**
-   * POST /admin/ingredients/:id with Method override: PATCH
-   */
   updateIngredient(id, ingData) {
     return this.request(`/admin/ingredients/${id}`, {
       method: 'POST',
@@ -313,9 +349,6 @@ class RestaurantApiClient {
     });
   }
 
-  /**
-   * POST /admin/ingredients/:id with Method override: DELETE
-   */
   deleteIngredient(id) {
     return this.request(`/admin/ingredients/${id}`, {
       method: 'POST',
@@ -329,6 +362,5 @@ class RestaurantApiClient {
   }
 }
 
-// Export single instance for application-wide use
 export const api = new RestaurantApiClient();
 export default api;
