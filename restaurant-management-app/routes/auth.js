@@ -34,21 +34,25 @@ const { requireAuth, requireGuest } = require('../lib/authMiddleware');
 // In-memory rate limiting map for POST /forget (2 minutes cooldown per target)
 const forgetRateLimitMap = new Map();
 
-// Helper to sanitize user object for safety
+// Helper to sanitize user object for safety (whitelist)
 function sanitizeUser(user) {
   if (!user) return null;
-  const safe = { ...user };
-  delete safe.passwordHash;
-  delete safe.salt;
-  delete safe.mfaSecret;
-  return safe;
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+    chefId: user.chefId ?? null,
+    mfaEnabled: Boolean(user.mfaEnabled)
+  };
 }
 
-// GET /api/auth/me - Returns current logged in user (or null)
-router.get('/api/auth/me', (req, res) => {
+// GET /api/auth/me - Returns current logged in user
+router.get('/api/auth/me', requireAuth, (req, res) => {
   return res.json({
     ok: true,
-    user: req.user ? sanitizeUser(req.user) : null,
+    user: sanitizeUser(req.user),
     csrfToken: req.authClaims ? generateCsrfToken(req.authClaims) : null
   });
 });
@@ -126,55 +130,25 @@ const handleRegister = async (req, res) => {
       return renderValidationError('An account with this email address already exists.');
     }
 
-    // 7. Validate Role (VIEWER, CHEF, ADMIN)
-    let assignedRole = 'VIEWER';
-    if (role && ['VIEWER', 'CHEF', 'ADMIN'].includes(role.toUpperCase())) {
-      assignedRole = role.toUpperCase();
-    }
-
-    // 8. Hash password using bcrypt incorporating a random 5-digit salt string
+    // 7. Hash password using bcrypt incorporating a random 5-digit salt string
     const salt = generate5DigitSalt();
     const passwordHash = await hashPassword(password, salt);
 
-    // 9. If CHEF or ADMIN: mandatory MFA setup upon Registration
-    let mfaSetup = null;
-    let mfaSecret = null;
-    let recoveryCodesPlain = null;
-    let recoveryCodesHashed = null;
-    const isMfaMandatory = assignedRole === 'CHEF' || assignedRole === 'ADMIN';
-
-    if (isMfaMandatory) {
-      mfaSecret = generateMfaSecret();
-      const totp = createTotpInstance(mfaSecret, cleanEmail);
-      const qrCodeDataUrl = await generateQrCodeDataUrl(totp);
-      recoveryCodesPlain = generateRecoveryCodes(10);
-      recoveryCodesHashed = await hashRecoveryCodes(recoveryCodesPlain);
-
-      mfaSetup = {
-        qrCode: qrCodeDataUrl,
-        secret: mfaSecret,
-        recoveryCodes: recoveryCodesPlain
-      };
-    }
-
-    // 10. Create user in database (status: PENDING)
+    // 8. Create user in database: always role VIEWER, mfaSecret null, mfaEnabled false
     const newUser = await prisma.user.create({
       data: {
         username: cleanUsername,
         email: cleanEmail,
         passwordHash,
         salt,
-        role: assignedRole,
+        role: 'VIEWER',
         status: 'PENDING',
-        mfaSecret: isMfaMandatory ? mfaSecret : null,
-        mfaEnabled: isMfaMandatory ? true : false,
-        recoveryCodes: isMfaMandatory && recoveryCodesHashed ? {
-          create: recoveryCodesHashed.map(codeHash => ({ codeHash }))
-        } : undefined
+        mfaSecret: null,
+        mfaEnabled: false
       }
     });
 
-    // 11. Generate 6-digit OTP and create ActivationChallenge
+    // 9. Generate 6-digit OTP and create ActivationChallenge
     const otp = generate6DigitOtp();
     const expiresAt = new Date(Date.now() + 2 * 60 * 1000); // 2 minutes
 
@@ -199,14 +173,13 @@ const handleRegister = async (req, res) => {
       }
     });
 
-    // 12. Send OTP email
+    // 10. Send OTP email
     await sendActivationOtpEmail(cleanEmail, otp);
 
     return res.status(200).json({
       ok: true,
       message: 'Account created. Please activate with the verification code sent to your email.',
-      email: cleanEmail,
-      mfaSetup
+      email: cleanEmail
     });
   } catch (err) {
     console.error('Registration processing error:', err.message);
@@ -644,22 +617,27 @@ router.post('/api/auth/mfa/verify', async (req, res) => {
     const matchingRecord = await verifyRecoveryCode(cleanCode, user.recoveryCodes);
 
     if (!matchingRecord) {
-      const attempts = (user.recoveryCodeAttempts || 0) + 1;
-      let mfaLockedUntil = null;
-      if (attempts >= 3) {
-        mfaLockedUntil = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes lockout
-      }
-
-      await prisma.user.update({
+      const updatedUser = await prisma.user.update({
         where: { id: user.id },
         data: {
-          recoveryCodeAttempts: attempts,
-          mfaFailedAttempts: (user.mfaFailedAttempts || 0) + 1,
-          mfaLockedUntil
+          recoveryCodeAttempts: { increment: 1 }
+        },
+        select: {
+          recoveryCodeAttempts: true
         }
       });
 
+      const attempts = updatedUser.recoveryCodeAttempts;
+
       if (attempts >= 3) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            mfaLockedUntil: new Date(Date.now() + 5 * 60 * 1000),
+            recoveryCodeAttempts: 0
+          }
+        });
+
         return res.status(429).json({
           ok: false,
           error: {
@@ -725,21 +703,27 @@ router.post('/api/auth/mfa/verify', async (req, res) => {
   const isValidTotp = verifyTokenWithDrift(totp, cleanCode, user.mfaDrift || 0);
 
   if (!isValidTotp) {
-    const attempts = (user.mfaFailedAttempts || 0) + 1;
-    let mfaLockedUntil = null;
-    if (attempts >= 3) {
-      mfaLockedUntil = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes lockout
-    }
-
-    await prisma.user.update({
+    const updatedUser = await prisma.user.update({
       where: { id: user.id },
       data: {
-        mfaFailedAttempts: attempts,
-        mfaLockedUntil
+        mfaFailedAttempts: { increment: 1 }
+      },
+      select: {
+        mfaFailedAttempts: true
       }
     });
 
+    const attempts = updatedUser.mfaFailedAttempts;
+
     if (attempts >= 3) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          mfaLockedUntil: new Date(Date.now() + 5 * 60 * 1000),
+          mfaFailedAttempts: 0
+        }
+      });
+
       return res.status(429).json({
         ok: false,
         error: {
@@ -1041,4 +1025,5 @@ router.post('/api/auth/reset', async (req, res) => {
   }
 });
 
+router.sanitizeUser = sanitizeUser;
 module.exports = router;
