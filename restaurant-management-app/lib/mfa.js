@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 
 const TOTP_PERIOD = 30;
+const MAX_DRIFT_SECONDS = TOTP_PERIOD; // acceptable device-vs-server drift: +/-30s (+/-1 step)
 
 // ==========================================
 // TOTP secret encryption at rest (AES-256-GCM)
@@ -140,11 +141,11 @@ async function verifyRecoveryCode(plainCode, recoveryCodeRecords) {
 function verifyInitialToken(totpInstance, token) {
   if (!token || typeof token !== 'string') return { valid: false, driftSeconds: 0, step: null };
   const cleanToken = token.trim();
-  const delta = totpInstance.validate({ token: cleanToken, window: 2 });
+  const delta = totpInstance.validate({ token: cleanToken, window: 1 });
   if (delta === null) {
     return { valid: false, driftSeconds: 0, step: null };
   }
-  // delta is step offset (-2..2). 1 step = 30 seconds.
+  // delta is the step offset (-1, 0 or +1). 1 step = 30 seconds.
   const driftSeconds = delta * TOTP_PERIOD;
   const step = Math.floor(Date.now() / 1000 / TOTP_PERIOD) + delta;
   return { valid: true, driftSeconds, step };
@@ -156,21 +157,25 @@ function verifyInitialToken(totpInstance, token) {
  * any step <= lastUsedStep (replay protection).
  * Returns the matched step (a positive integer) or null.  NOTE: no longer returns a boolean.
  */
-function verifyTokenWithDrift(totpInstance, token, driftSeconds = 0, lastUsedStep = null) {
+function verifyTokenWithDrift(totpInstance, token, savedDriftSeconds = 0, lastUsedStep = null) {
   if (!token || typeof token !== 'string') return null;
-  const effectiveTimestamp = Date.now() + (driftSeconds * 1000);
+  const effectiveTimestamp = Date.now() + (savedDriftSeconds * 1000);
   const delta = totpInstance.validate({
     token: token.trim(),
-    window: 1,
+    window: 1, // accept the previous and next 30s code
     timestamp: effectiveTimestamp
   });
   if (delta === null) return null;
+
+  // Total offset between the user's device and the server clock, as shown by this code
+  const driftSeconds = savedDriftSeconds + (delta * TOTP_PERIOD);
+  if (Math.abs(driftSeconds) > MAX_DRIFT_SECONDS) return null; // beyond the +/-30s limit
 
   const step = Math.floor(effectiveTimestamp / 1000 / TOTP_PERIOD) + delta;
   if (lastUsedStep !== null && lastUsedStep !== undefined && step <= lastUsedStep) {
     return null; // this code (or an older one) was already used
   }
-  return step;
+  return { step, driftSeconds };
 }
 
 /**

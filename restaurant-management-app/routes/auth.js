@@ -728,9 +728,9 @@ router.post('/api/auth/mfa/verify', async (req, res) => {
   }
 
   const totp = createTotpFromUser(user);
-  const matchedStep = verifyTokenWithDrift(totp, cleanCode, user.mfaDrift || 0, user.mfaLastUsedStep);
+  const match = verifyTokenWithDrift(totp, cleanCode, user.mfaDrift || 0, user.mfaLastUsedStep);
   // Atomically mark this 30s step as used; a parallel request with the same code loses the race.
-  const isValidTotp = matchedStep !== null && await consumeTotpStep(prisma, user.id, matchedStep);
+  const isValidTotp = match !== null && await consumeTotpStep(prisma, user.id, match.step);
 
 if (!isValidTotp) {
     const updatedUser = await prisma.user.update({
@@ -773,12 +773,14 @@ if (!isValidTotp) {
   }
 
   // Reset MFA failed tracking
+    // Reset MFA failed tracking and record the drift observed within the +/-30s limit
   await prisma.user.update({
     where: { id: user.id },
     data: {
       mfaFailedAttempts: 0,
       recoveryCodeAttempts: 0,
-      mfaLockedUntil: null
+      mfaLockedUntil: null,
+      mfaDrift: match.driftSeconds
     }
   });
 
@@ -1150,8 +1152,8 @@ router.post('/api/auth/mfa/disable', requireAuth, async (req, res) => {
 
   if (!codeVerified && user.mfaSecret) {
     const totp = createTotpFromUser(user);
-    const matchedStep = verifyTokenWithDrift(totp, cleanCode, user.mfaDrift || 0, user.mfaLastUsedStep);
-    if (matchedStep !== null && await consumeTotpStep(prisma, user.id, matchedStep)) {
+    const match = verifyTokenWithDrift(totp, cleanCode, user.mfaDrift || 0, user.mfaLastUsedStep);
+    if (match !== null && await consumeTotpStep(prisma, user.id, match.step)) {
       codeVerified = true;
     }
   }
