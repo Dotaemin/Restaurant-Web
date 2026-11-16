@@ -5,7 +5,7 @@ import LoadHandler from '../components/LoadHandler';
 import NotFoundPage from './NotFoundPage';
 import ChefSelectModal from '../components/ChefSelectModal';
 import IngredientSelectModal from '../components/IngredientSelectModal';
-import { ArrowLeft, Edit2, AlertCircle, ChevronRight, X } from 'lucide-react';
+import { ArrowLeft, Edit2, AlertCircle, ChevronRight, X, ShieldAlert } from 'lucide-react';
 
 const CATEGORIES = ['Main Course', 'Appetizer', 'Dessert', 'Beverage'];
 
@@ -18,6 +18,8 @@ export default function AdminDishEditPage() {
   const [notFound, setNotFound] = useState(false);
   const [notFoundMsg, setNotFoundMsg] = useState('');
   const [errorBanner, setErrorBanner] = useState('');
+  const [forbiddenMsg, setForbiddenMsg] = useState('');
+  const [currentUser, setCurrentUser] = useState(null);
 
   const [chefs, setChefs] = useState([]);
   const [ingredients, setIngredients] = useState([]);
@@ -43,15 +45,21 @@ export default function AdminDishEditPage() {
     async function loadDishAndMeta() {
       setLoading(true);
       setErrorBanner('');
+      setForbiddenMsg('');
 
       try {
-        const [dishRes, chefsRes, ingredientsRes] = await Promise.all([
+        const [dishRes, chefsRes, ingredientsRes, meRes] = await Promise.all([
           api.getDish(id),
           api.getChefs({ pageSize: 100 }),
-          api.getIngredients({ pageSize: 100 })
+          api.getIngredients({ pageSize: 100 }),
+          api.getCurrentUser()
         ]);
 
         if (!isMounted) return;
+
+        if (meRes?.ok && meRes.user) {
+          setCurrentUser(meRes.user);
+        }
 
         if (!dishRes.ok || !dishRes.data) {
           setNotFound(true);
@@ -61,6 +69,17 @@ export default function AdminDishEditPage() {
         }
 
         const dish = dishRes.data;
+        const user = meRes?.user;
+
+        // ABAC Check: If user is CHEF, must only edit dishes they cook
+        if (user && user.role === 'CHEF') {
+          if (!user.chefId || dish.chefId !== user.chefId) {
+            setForbiddenMsg('You can only edit dishes that you cook.');
+            setLoading(false);
+            return;
+          }
+        }
+
         setFormData({
           name: dish.name || '',
           description: dish.description || '',
@@ -102,31 +121,20 @@ export default function AdminDishEditPage() {
     }
   };
 
-  const handleIngredientToggle = (ingId) => {
-    setFormData((prev) => {
-      const exists = prev.ingredientIds.includes(ingId);
-      const nextIngs = exists
-        ? prev.ingredientIds.filter((i) => i !== ingId)
-        : [...prev.ingredientIds, ingId];
-      return { ...prev, ingredientIds: nextIngs };
-    });
-    if (fieldErrors.ingredientIds) {
-      setFieldErrors((prev) => {
-        const updated = { ...prev };
-        delete updated.ingredientIds;
-        return updated;
-      });
-    }
+  const removeIngredient = (ingId) => {
+    setFormData((prev) => ({
+      ...prev,
+      ingredientIds: prev.ingredientIds.filter((id) => id !== ingId)
+    }));
   };
 
-  // Pre-flight Client-Side Validation
   const validateDishForm = (data) => {
     const errors = {};
     if (!data.name || data.name.trim().length === 0) {
       errors.name = 'Dish name is required and cannot be left blank.';
     }
     const parsedPrice = parseFloat(data.price);
-    if (data.price === '' || data.price === null || data.price === undefined || isNaN(parsedPrice)) {
+    if (data.price === undefined || data.price === null || data.price === '' || isNaN(parsedPrice)) {
       errors.price = 'Price is required and must be a valid number.';
     } else if (parsedPrice < 0) {
       errors.price = 'Price must not be a negative number.';
@@ -154,7 +162,6 @@ export default function AdminDishEditPage() {
     setFieldErrors({});
     setErrorBanner('');
 
-    // Run client-side validation first
     const clientErrors = validateDishForm(formData);
     if (Object.keys(clientErrors).length > 0) {
       setFieldErrors(clientErrors);
@@ -168,71 +175,96 @@ export default function AdminDishEditPage() {
     setSubmitting(false);
 
     if (res.ok) {
-      // Per spec: On successful form submission, redirect client-side to origin page with no reloading
-      navigate('/admin/dishes', {
-        state: { msg: `Dish "${res.data.name}" was successfully updated.` }
-      });
+      navigate('/admin/dishes');
     } else {
-      if (res.error?.code === 'VALIDATION_FAILED' && res.error.fields) {
+      if (res.error?.fields) {
         setFieldErrors(res.error.fields);
-        setErrorBanner(res.error.message || 'Please correct the highlighted form errors.');
-      } else {
-        setErrorBanner(res.error?.message || 'Failed to update dish.');
       }
+      setErrorBanner(res.error?.message || 'Failed to update dish.');
     }
   };
 
   if (loading) {
-    return <LoadHandler loading={true} message="Loading dish details..." />;
+    return <LoadHandler type="form" message="Loading dish details..." />;
   }
 
   if (notFound) {
-    return <NotFoundPage message={notFoundMsg} />;
+    return (
+      <NotFoundPage
+        title="Dish Not Found"
+        message={notFoundMsg}
+        backLink="/admin/dishes"
+        backText="Back to Dishes Management"
+      />
+    );
   }
 
-  return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      {/* LoadHandler overlay that disables all buttons during update */}
-      <LoadHandler loading={submitting} message="Saving dish changes..." />
-
-      {/* Top Left Redirect Button to origin page */}
-      <div>
+  if (forbiddenMsg) {
+    return (
+      <div className="max-w-xl mx-auto my-12 bg-white rounded-3xl border border-rose-200 p-8 shadow-sm text-center">
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mb-4">
+          <ShieldAlert className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-black text-slate-900 mb-2">Access Restricted</h2>
+        <p className="text-sm text-slate-600 mb-6 font-medium">{forbiddenMsg}</p>
         <Link
           to="/admin/dishes"
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm text-white bg-[#ba1414] hover:bg-red-800 transition-colors shadow-sm"
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#ba1414] text-white font-bold text-xs hover:bg-red-800 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Back to Manage Dishes</span>
         </Link>
       </div>
+    );
+  }
 
-      {/* Error Banner */}
-      {errorBanner && (
-        <div className="flex items-center gap-2 p-4 bg-red-50 border border-red-200 rounded-xl text-[#ba1414] text-sm font-medium">
-          <AlertCircle className="w-5 h-5 text-[#ba1414]" />
-          <span>{errorBanner}</span>
-        </div>
-      )}
+  const isChefUser = currentUser?.role === 'CHEF';
 
-      {/* Edit Form Card */}
-      <div className="relative overflow-hidden bg-white rounded-3xl border-2 border-[#ba1414] p-6 sm:p-8 shadow-xl">
-        <div className="flex items-center gap-3 pb-4 border-b border-gray-200 mb-6">
-          <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center text-[#ba1414]">
+  return (
+    <div className="max-w-3xl mx-auto space-y-6">
+      {/* Header & Back Button */}
+      <div className="flex items-center justify-between">
+        <Link
+          to="/admin/dishes"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-[#ba1414] transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back to Dishes Management</span>
+        </Link>
+        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+          Dish #{id}
+        </span>
+      </div>
+
+      {/* Main Card */}
+      <div className="relative bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        {submitting && <LoadHandler type="form" message="Saving changes to dish..." />}
+
+        {/* Card Header */}
+        <div className="p-6 border-b border-gray-100 flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-red-50 text-[#ba1414]">
             <Edit2 className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900">
-              Edit Dish: {formData.name || `#${id}`}
-            </h1>
-            <p className="text-xs text-gray-500">
-              Update dish information, pricing, assigned chef, and ingredients.
+            <h1 className="text-xl font-bold text-gray-900">Edit Dish</h1>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Update dish details, ingredients, chef assignment, or availability.
             </p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Dish Name */}
+        {/* Global Error Banner */}
+        {errorBanner && (
+          <div className="mx-6 mt-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 shrink-0 text-red-600 mt-0.5" />
+            <div className="text-sm font-medium">{errorBanner}</div>
+          </div>
+        )}
+
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          {/* Row 1: Dish Name & Price */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1">
                 Dish Name *
@@ -242,16 +274,18 @@ export default function AdminDishEditPage() {
                 name="name"
                 value={formData.name}
                 onChange={handleInputChange}
-                className={`w-full px-3.5 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-[#ba1414] ${
-                  fieldErrors.name ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                className={`w-full px-3.5 py-2.5 rounded-xl border text-sm transition-colors ${
+                  fieldErrors.name
+                    ? 'border-red-500 bg-red-50 focus:border-red-500 focus:ring-1 focus:ring-red-500'
+                    : 'border-gray-300 focus:border-[#ba1414] focus:ring-1 focus:ring-[#ba1414]'
                 }`}
+                placeholder="e.g., Margherita Pizza Classica"
               />
               {fieldErrors.name && (
                 <p className="text-xs text-red-600 font-medium mt-1">{fieldErrors.name}</p>
               )}
             </div>
 
-            {/* Price */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1">
                 Price ($) *
@@ -263,16 +297,21 @@ export default function AdminDishEditPage() {
                 name="price"
                 value={formData.price}
                 onChange={handleInputChange}
-                className={`w-full px-3.5 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-[#ba1414] ${
-                  fieldErrors.price ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                className={`w-full px-3.5 py-2.5 rounded-xl border text-sm transition-colors ${
+                  fieldErrors.price
+                    ? 'border-red-500 bg-red-50 focus:border-red-500 focus:ring-1 focus:ring-red-500'
+                    : 'border-gray-300 focus:border-[#ba1414] focus:ring-1 focus:ring-[#ba1414]'
                 }`}
+                placeholder="0.00"
               />
               {fieldErrors.price && (
                 <p className="text-xs text-red-600 font-medium mt-1">{fieldErrors.price}</p>
               )}
             </div>
+          </div>
 
-            {/* Category */}
+          {/* Row 2: Category & Assigned Chef */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1">
                 Category *
@@ -281,7 +320,11 @@ export default function AdminDishEditPage() {
                 name="category"
                 value={formData.category}
                 onChange={handleInputChange}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#ba1414] bg-white"
+                className={`w-full px-3.5 py-2.5 rounded-xl border text-sm transition-colors bg-white ${
+                  fieldErrors.category
+                    ? 'border-red-500 bg-red-50 focus:border-red-500'
+                    : 'border-gray-300 focus:border-[#ba1414]'
+                }`}
               >
                 {CATEGORIES.map((cat) => (
                   <option key={cat} value={cat}>
@@ -294,7 +337,7 @@ export default function AdminDishEditPage() {
               )}
             </div>
 
-            {/* Chef Selection */}
+            {/* Chef Selection: Locked for CHEF role */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1">
                 Assigned Chef *
@@ -310,15 +353,16 @@ export default function AdminDishEditPage() {
                         {selectedChef?.name || `Chef #${formData.chefId}`}
                         {selectedChef?.specialty ? ` (${selectedChef.specialty})` : ''}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => setFormData((prev) => ({ ...prev, chefId: '' }))}
-                        className="text-[#ba1414] hover:text-red-900 p-0.5 rounded cursor-pointer shrink-0"
-                        title="Clear selection"
-                        aria-label="Clear chef selection"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
+                      {!isChefUser && (
+                        <button
+                          type="button"
+                          onClick={() => setFormData((prev) => ({ ...prev, chefId: '' }))}
+                          className="text-[#ba1414] hover:text-red-900 p-0.5 rounded cursor-pointer shrink-0"
+                          title="Clear selection"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   );
                 })()
@@ -326,6 +370,7 @@ export default function AdminDishEditPage() {
                 <button
                   type="button"
                   onClick={() => setIsChefModalOpen(true)}
+                  disabled={isChefUser}
                   className={`w-full px-3.5 py-2.5 rounded-xl border text-sm text-left flex items-center justify-between transition-colors bg-white cursor-pointer ${
                     fieldErrors.chefId
                       ? 'border-red-500 bg-red-50 text-red-700'
@@ -336,135 +381,146 @@ export default function AdminDishEditPage() {
                   <ChevronRight className="w-4 h-4 text-gray-400" />
                 </button>
               )}
+              {isChefUser && (
+                <p className="text-2xs text-slate-500 mt-1">
+                  Chefs cannot change chef assignment on dish updates.
+                </p>
+              )}
               {fieldErrors.chefId && (
                 <p className="text-xs text-red-600 font-medium mt-1">{fieldErrors.chefId}</p>
               )}
             </div>
-
-            {/* Image URL (REQUIRED) */}
-            <div className="md:col-span-2">
-              <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1">
-                Image URL *
-              </label>
-              <input
-                type="url"
-                name="imageUrl"
-                value={formData.imageUrl}
-                onChange={handleInputChange}
-                className={`w-full px-3.5 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-[#ba1414] ${
-                  fieldErrors.imageUrl ? 'border-red-500 bg-red-50' : 'border-gray-300'
-                }`}
-              />
-              {fieldErrors.imageUrl && (
-                <p className="text-xs text-red-600 font-medium mt-1">{fieldErrors.imageUrl}</p>
-              )}
-            </div>
-
-            {/* Description */}
-            <div className="md:col-span-2">
-              <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1">
-                Description *
-              </label>
-              <textarea
-                name="description"
-                rows="3"
-                value={formData.description}
-                onChange={handleInputChange}
-                className={`w-full px-3.5 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-[#ba1414] ${
-                  fieldErrors.description ? 'border-red-500 bg-red-50' : 'border-gray-300'
-                }`}
-              />
-              {fieldErrors.description && (
-                <p className="text-xs text-red-600 font-medium mt-1">{fieldErrors.description}</p>
-              )}
-            </div>
-
-            {/* Availability Toggle */}
-            <div className="md:col-span-2">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  name="available"
-                  checked={formData.available}
-                  onChange={handleInputChange}
-                  className="w-4 h-4 rounded text-[#ba1414] focus:ring-[#ba1414]"
-                />
-                <span className="text-sm font-semibold text-gray-800">
-                  Available for Customer Ordering
-                </span>
-              </label>
-            </div>
-
-            {/* Ingredients Selection */}
-            <div className="md:col-span-2">
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
-                  Ingredients * (Select at least one)
-                </label>
-                {formData.ingredientIds.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setIsIngModalOpen(true)}
-                    className="text-xs font-bold text-[#ba1414] hover:underline cursor-pointer"
-                  >
-                    Edit selection
-                  </button>
-                )}
-              </div>
-
-              {formData.ingredientIds.length > 0 ? (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-36 overflow-y-auto p-2.5 border border-gray-200 rounded-xl bg-gray-50">
-                  {formData.ingredientIds.map((id) => {
-                    const ing = ingredients.find((i) => i.id === id);
-                    return (
-                      <div
-                        key={id}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white border border-[#ba1414] text-[#ba1414] shadow-2xs truncate"
-                      >
-                        <span className="truncate">{ing?.name || `Ingredient #${id}`}</span>
-                        {ing?.unit && <span className="text-[10px] text-gray-500 font-normal">({ing.unit})</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setIsIngModalOpen(true)}
-                  className={`w-full px-3.5 py-2.5 rounded-xl border text-sm text-left flex items-center justify-between transition-colors bg-white cursor-pointer ${
-                    fieldErrors.ingredientIds
-                      ? 'border-red-500 bg-red-50 text-red-700'
-                      : 'border-gray-300 text-gray-700 hover:border-[#ba1414]'
-                  }`}
-                >
-                  <span>Select Ingredients</span>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
-                </button>
-              )}
-              {fieldErrors.ingredientIds && (
-                <p className="text-xs text-red-600 font-medium mt-1">{fieldErrors.ingredientIds}</p>
-              )}
-            </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-5 border-t border-gray-200">
+          {/* Row 3: Image URL & Availability Checkbox */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1">
+              Image URL *
+            </label>
+            <input
+              type="text"
+              name="imageUrl"
+              value={formData.imageUrl}
+              onChange={handleInputChange}
+              className={`w-full px-3.5 py-2.5 rounded-xl border text-sm transition-colors ${
+                fieldErrors.imageUrl
+                  ? 'border-red-500 bg-red-50 focus:border-red-500 focus:ring-1 focus:ring-red-500'
+                  : 'border-gray-300 focus:border-[#ba1414] focus:ring-1 focus:ring-[#ba1414]'
+              }`}
+              placeholder="https://images.unsplash.com/photo-..."
+            />
+            {fieldErrors.imageUrl && (
+              <p className="text-xs text-red-600 font-medium mt-1">{fieldErrors.imageUrl}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="flex items-center gap-2 cursor-pointer mt-1">
+              <input
+                type="checkbox"
+                name="available"
+                checked={formData.available}
+                onChange={handleInputChange}
+                className="w-4 h-4 rounded text-[#ba1414] focus:ring-[#ba1414] border-gray-300 cursor-pointer"
+              />
+              <span className="text-sm font-semibold text-gray-700">
+                Mark as Available for Ordering
+              </span>
+            </label>
+          </div>
+
+          {/* Row 4: Ingredients Selection */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1">
+              Ingredients *
+            </label>
+
+            {/* Selected Ingredient Tags */}
+            {formData.ingredientIds.length > 0 ? (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {formData.ingredientIds.map((ingId) => {
+                  const ing = ingredients.find((i) => i.id === ingId);
+                  return (
+                    <span
+                      key={ingId}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-[#ba1414] border border-[#ba1414]/30"
+                    >
+                      <span>{ing ? `${ing.name} (${ing.unit})` : `Ingredient #${ingId}`}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeIngredient(ingId)}
+                        className="text-[#ba1414] hover:text-red-900 p-0.5 rounded cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => setIsIngModalOpen(true)}
+              className={`w-full px-3.5 py-2.5 rounded-xl border text-sm text-left flex items-center justify-between transition-colors bg-white cursor-pointer ${
+                fieldErrors.ingredientIds
+                  ? 'border-red-500 bg-red-50 text-red-700'
+                  : 'border-gray-300 text-gray-700 hover:border-[#ba1414]'
+              }`}
+            >
+              <span>
+                {formData.ingredientIds.length > 0
+                  ? `Edit Selection (${formData.ingredientIds.length} ingredients selected)`
+                  : 'Select Ingredients'}
+              </span>
+              <ChevronRight className="w-4 h-4 text-gray-400" />
+            </button>
+            {fieldErrors.ingredientIds && (
+              <p className="text-xs text-red-600 font-medium mt-1">{fieldErrors.ingredientIds}</p>
+            )}
+          </div>
+
+          {/* Row 5: Description */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1">
+              Dish Description *
+            </label>
+            <textarea
+              name="description"
+              rows="4"
+              value={formData.description}
+              onChange={handleInputChange}
+              className={`w-full px-3.5 py-2.5 rounded-xl border text-sm transition-colors ${
+                fieldErrors.description
+                  ? 'border-red-500 bg-red-50 focus:border-red-500 focus:ring-1 focus:ring-red-500'
+                  : 'border-gray-300 focus:border-[#ba1414] focus:ring-1 focus:ring-[#ba1414]'
+              }`}
+              placeholder="Describe the dish ingredients, preparation, taste, and allergens..."
+            />
+            {fieldErrors.description && (
+              <p className="text-xs text-red-600 font-medium mt-1">{fieldErrors.description}</p>
+            )}
+          </div>
+
+          {/* Form Actions */}
+          <div className="pt-4 border-t border-gray-100 flex items-center justify-end gap-3">
             <Link
               to="/admin/dishes"
-              className="px-5 py-2.5 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+              className="px-5 py-2.5 rounded-xl border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
             >
               Cancel
             </Link>
             <button
               type="submit"
-              className="px-6 py-2.5 rounded-xl font-semibold text-sm text-white bg-[#ba1414] hover:bg-red-800 transition-all shadow-md"
+              disabled={submitting}
+              className="px-6 py-2.5 rounded-xl bg-[#ba1414] text-white text-sm font-bold shadow-sm hover:bg-red-800 transition-colors disabled:opacity-50 cursor-pointer"
             >
-              Update Dish
+              Save Changes
             </button>
           </div>
         </form>
 
-        {/* Form Context Modals: Confined to form window */}
+        {/* Chef Selection Modal */}
         <ChefSelectModal
           isOpen={isChefModalOpen}
           onClose={() => setIsChefModalOpen(false)}
@@ -472,33 +528,32 @@ export default function AdminDishEditPage() {
             setFormData((prev) => ({ ...prev, chefId }));
             if (fieldErrors.chefId) {
               setFieldErrors((prev) => {
-                const next = { ...prev };
-                delete next.chefId;
-                return next;
+                const updated = { ...prev };
+                delete updated.chefId;
+                return updated;
               });
             }
           }}
           selectedChefId={formData.chefId}
-          chefs={chefs}
-          isForm={true}
+          isFormContext={true}
         />
 
+        {/* Ingredient Selection Modal */}
         <IngredientSelectModal
           isOpen={isIngModalOpen}
           onClose={() => setIsIngModalOpen(false)}
-          onSelect={(ingredientIds) => {
-            setFormData((prev) => ({ ...prev, ingredientIds }));
+          onSelect={(selectedIds) => {
+            setFormData((prev) => ({ ...prev, ingredientIds: selectedIds }));
             if (fieldErrors.ingredientIds) {
               setFieldErrors((prev) => {
-                const next = { ...prev };
-                delete next.ingredientIds;
-                return next;
+                const updated = { ...prev };
+                delete updated.ingredientIds;
+                return updated;
               });
             }
           }}
           selectedIngredientIds={formData.ingredientIds}
-          ingredients={ingredients}
-          isForm={true}
+          isFormContext={true}
         />
       </div>
     </div>

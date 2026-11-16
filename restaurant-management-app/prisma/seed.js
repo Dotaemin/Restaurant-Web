@@ -1,6 +1,8 @@
 require('dotenv').config();
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const { generate5DigitSalt, hashPassword } = require('../lib/security');
+const { hashRecoveryCodes } = require('../lib/mfa');
 
 async function main() {
   console.log('Seeding restaurant database...');
@@ -190,6 +192,109 @@ async function main() {
         connect: [{ id: ingTomato.id }, { id: ingMozzarella.id }, { id: ingBasil.id }]
       }
     }
+  });
+
+  // 4. Create or Upsert RBAC Seed Users (1 Admin, 1 Chef, 1 Viewer)
+  console.log('Seeding RBAC users (admin, chef, viewer)...');
+
+  const SEED_RECOVERY_CODES = [
+    'A1B2-C3D4', 'B2C3-D4E5', 'C3D4-E5F6', 'D4E5-F6A7', 'E5F6-A7B8',
+    'F6A7-B8C9', 'A7B8-C9D0', 'B8C9-D0E1', 'C9D0-E1F2', 'D0E1-F2A3'
+  ];
+  const hashedCodes = await hashRecoveryCodes(SEED_RECOVERY_CODES);
+
+  const adminSalt = generate5DigitSalt();
+  const adminHash = await hashPassword('Admin123!', adminSalt);
+  const adminUser = await prisma.user.upsert({
+    where: { email: 'admin@gmail.com' },
+    update: {
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      mfaSecret: 'JBSWY3DPEHPK3PXP',
+      mfaEnabled: true,
+      mfaDrift: 0
+    },
+    create: {
+      username: 'admin',
+      email: 'admin@gmail.com',
+      passwordHash: adminHash,
+      salt: adminSalt,
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      chefId: null,
+      mfaSecret: 'JBSWY3DPEHPK3PXP',
+      mfaEnabled: true,
+      mfaDrift: 0,
+      emailVerifiedAt: new Date()
+    }
+  });
+
+  // Seed recovery codes for admin
+  await prisma.recoveryCode.deleteMany({ where: { userId: adminUser.id } });
+  await prisma.recoveryCode.createMany({
+    data: hashedCodes.map(codeHash => ({ userId: adminUser.id, codeHash }))
+  });
+
+  const chefSalt = generate5DigitSalt();
+  const chefHash = await hashPassword('Chef123!', chefSalt);
+  const chefUser = await prisma.user.upsert({
+    where: { email: 'chef@gmail.com' },
+    update: {
+      role: 'CHEF',
+      status: 'ACTIVE',
+      chefId: chefMarco.id,
+      mfaSecret: 'JBSWY3DPEHPK3PXP',
+      mfaEnabled: true,
+      mfaDrift: 0
+    },
+    create: {
+      username: 'chef',
+      email: 'chef@gmail.com',
+      passwordHash: chefHash,
+      salt: chefSalt,
+      role: 'CHEF',
+      status: 'ACTIVE',
+      chefId: chefMarco.id,
+      mfaSecret: 'JBSWY3DPEHPK3PXP',
+      mfaEnabled: true,
+      mfaDrift: 0,
+      emailVerifiedAt: new Date()
+    }
+  });
+
+  // Seed recovery codes for chef
+  await prisma.recoveryCode.deleteMany({ where: { userId: chefUser.id } });
+  await prisma.recoveryCode.createMany({
+    data: hashedCodes.map(codeHash => ({ userId: chefUser.id, codeHash }))
+  });
+
+  const viewerSalt = generate5DigitSalt();
+  const viewerHash = await hashPassword('Viewer123!', viewerSalt);
+  const viewerUser = await prisma.user.upsert({
+    where: { email: 'viewer@gmail.com' },
+    update: {
+      role: 'VIEWER',
+      status: 'ACTIVE',
+      chefId: null,
+      mfaEnabled: false
+    },
+    create: {
+      username: 'viewer',
+      email: 'viewer@gmail.com',
+      passwordHash: viewerHash,
+      salt: viewerSalt,
+      role: 'VIEWER',
+      status: 'ACTIVE',
+      chefId: null,
+      mfaEnabled: false,
+      emailVerifiedAt: new Date()
+    }
+  });
+
+  console.log('RBAC Seed users verified in Supabase:', {
+    admin: adminUser.email,
+    chef: chefUser.email,
+    viewer: viewerUser.email
   });
 
   console.log('Seed completed successfully in Supabase!');

@@ -7,11 +7,23 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  VIEWER
+  CHEF
+  ADMIN
+}
+
+enum Status {
+  PENDING
+  ACTIVE
+}
+
 model Chef {
   id        Int      @id @default(autoincrement())
   name      String   @unique
   specialty String
   dishes    Dish[]
+  user      User?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -46,23 +58,47 @@ model User {
   email               String               @unique
   passwordHash        String
   salt                String
-  role                String               @default("Viewer")
-  status              String               @default("pending") // "pending" | "active"
+  role                Role                 @default(VIEWER)
+  status              Status               @default(PENDING)
   emailVerifiedAt     DateTime?
   
+  chefId              Int?                 @unique
+  chef                Chef?                @relation(fields: [chefId], references: [id], onDelete: SetNull)
+
+  // Login failed attempt tracking
   failedLoginAttempts Int?                 @default(0)
   lastFailedLoginAt   DateTime?
   lockoutUntil        DateTime?
+
+  // MFA / TOTP fields
+  mfaSecret           String?
+  mfaEnabled          Boolean              @default(false)
+  mfaDrift            Int                  @default(0)
+  mfaFailedAttempts   Int                  @default(0)
+  mfaLockedUntil      DateTime?
+  recoveryCodeAttempts Int                 @default(0)
+  recoveryCodeLockedUntil DateTime?
+  recoveryCodes       RecoveryCode[]
   
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
   activationChallenge ActivationChallenge?
-  passwordChallenges PasswordChallenge[]
-  sessions           Session[]
+  passwordChallenges  PasswordChallenge[]
 
   @@index([email])
   @@index([username])
+}
+
+model RecoveryCode {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model ActivationChallenge {
@@ -91,14 +127,4 @@ model PasswordChallenge {
 
   @@index([userId])
   @@index([tokenHash])
-}
-
-model Session {
-  sid       String   @id
-  userId    Int
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
 }

@@ -1,11 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../../lib/prisma');
+const { requirePermission } = require('../../lib/authMiddleware');
 
 const ALLOWED_UNITS = ['kg', 'g', 'ml', 'l', 'tbsp', 'pcs', 'bunches'];
 
-// GET /api/ingredients & /api/admin/ingredients
-router.get('/', async (req, res, next) => {
+// GET /api/ingredients & /api/admin/ingredients (RBAC: ingredient:read -> CHEF, ADMIN)
+router.get('/', requirePermission('ingredient:read'), async (req, res, next) => {
   try {
     const { page, pageSize, unit, sortBy, sortOrder } = req.query;
     const defaultPageSize = 20;
@@ -101,8 +102,8 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// GET /api/ingredients/:id - Retrieve single ingredient by ID
-router.get('/:id', async (req, res, next) => {
+// GET /api/ingredients/:id - Retrieve single ingredient by ID (RBAC: ingredient:read -> CHEF, ADMIN)
+router.get('/:id', requirePermission('ingredient:read'), async (req, res, next) => {
   try {
     const rawId = req.params.id;
     const id = parseInt(rawId, 10);
@@ -145,8 +146,8 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-// POST /api/ingredients - Create ingredient
-router.post('/', async (req, res, next) => {
+// POST /api/ingredients - Create ingredient (RBAC: ingredient:create -> ADMIN ONLY)
+router.post('/', requirePermission('ingredient:create'), async (req, res, next) => {
   try {
     const { name, unit } = req.body;
     const fields = {};
@@ -200,8 +201,8 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-// PATCH /api/ingredients/:id - Update ingredient
-router.patch('/:id', async (req, res, next) => {
+// PATCH /api/ingredients/:id - Update ingredient (RBAC: ingredient:update -> ADMIN ONLY)
+router.patch('/:id', requirePermission('ingredient:update'), async (req, res, next) => {
   try {
     const rawId = req.params.id;
     const id = parseInt(rawId, 10);
@@ -289,8 +290,8 @@ router.patch('/:id', async (req, res, next) => {
   }
 });
 
-// DELETE /api/ingredients/:id - Cascade delete dishes containing this ingredient, then delete ingredient
-router.delete('/:id', async (req, res, next) => {
+// DELETE /api/ingredients/:id - Cascade delete dishes containing this ingredient, then delete ingredient (RBAC: ingredient:delete -> ADMIN ONLY)
+router.delete('/:id', requirePermission('ingredient:delete'), async (req, res, next) => {
   try {
     const rawId = req.params.id;
     const id = parseInt(rawId, 10);

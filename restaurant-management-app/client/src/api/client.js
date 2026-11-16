@@ -29,14 +29,14 @@ class RestaurantApiClient {
     const url = `${this.baseUrl}${endpoint}`;
     const method = (options.method || 'GET').toUpperCase();
     const config = {
-    credentials: 'include',
-    ...options,
-    headers: {
-      ...this.defaultHeaders,
-      ...(method !== 'GET' && this.csrfToken ? { 'X-CSRF-Token': this.csrfToken } : {}),
-      ...options.headers,
-    },
-};
+      credentials: 'include',
+      ...options,
+      headers: {
+        ...this.defaultHeaders,
+        ...(method !== 'GET' && this.csrfToken ? { 'X-CSRF-Token': this.csrfToken } : {}),
+        ...options.headers,
+      },
+    };
 
     let response;
     // LEVEL 1: Connection error and CORS blocking
@@ -63,10 +63,28 @@ class RestaurantApiClient {
       json = null;
     }
 
-    // LEVEL 2: Wrong URL or system error (HTTP 404, 500, non-200 technical status without 'ok')
+    // LEVEL 2: Non-200 status
     if (!response.ok) {
       const is404 = response.status === 404;
       const is429 = response.status === 429;
+      const is401 = response.status === 401;
+      const is403 = response.status === 403;
+
+      // requireAuth: return 401 UNAUTHENTICATED -> Redirect to /login with natural language error
+      if (is401 && !endpoint.includes('/auth/me') && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/mfa/verify')) {
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+          window.location.href = '/login?msg=unauthenticated';
+        }
+      }
+
+      // requireActive: return 403 ACTIVATION_REQUIRED -> Redirect to /activation
+      if (is403 && (json?.requireActivation || json?.error?.code === 'ACTIVATION_REQUIRED')) {
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/activation')) {
+          const emailQuery = json?.email ? `&email=${encodeURIComponent(json.email)}` : '';
+          window.location.href = `/activation?msg=activation_required${emailQuery}`;
+        }
+      }
+
       return {
         ok: false,
         status: response.status,
@@ -77,7 +95,7 @@ class RestaurantApiClient {
         error: {
           level: 2,
           status: response.status,
-          code: json?.error?.code || (is429 ? 'TOO_MANY_ATTEMPTS' : is404 ? 'INVALID_URL' : 'SYSTEM_ERROR'),
+          code: json?.error?.code || (is429 ? 'TOO_MANY_ATTEMPTS' : is404 ? 'INVALID_URL' : is401 ? 'UNAUTHENTICATED' : is403 ? 'FORBIDDEN' : 'SYSTEM_ERROR'),
           message: json?.error?.message || json?.message || (is404 ? `The requested endpoint was not found: ${endpoint}` : 'A technical server error occurred.'),
           technicalDetails: json
         }
@@ -88,7 +106,7 @@ class RestaurantApiClient {
     if (json && json.ok === false) {
       return {
         ok: false,
-                status: 200,
+        status: 200,
         level: 3,
         requireCaptcha: json?.requireCaptcha || false,
         requireActivation: json?.requireActivation || json.error?.code === 'ACTIVATION_REQUIRED' || false,
@@ -162,6 +180,44 @@ class RestaurantApiClient {
     return this.request('/auth/login', {
       method: 'POST',
       body: JSON.stringify(data)
+    });
+  }
+
+  /**
+   * POST /api/auth/mfa/verify
+   */
+  verifyMfa(data) {
+    return this.request('/auth/mfa/verify', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  /**
+   * POST /api/auth/mfa/setup
+   */
+  setupMfa() {
+    return this.request('/auth/mfa/setup', {
+      method: 'POST'
+    });
+  }
+
+  /**
+   * POST /api/auth/mfa/confirm
+   */
+  confirmMfa(data) {
+    return this.request('/auth/mfa/confirm', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  /**
+   * POST /api/auth/mfa/disable
+   */
+  disableMfa() {
+    return this.request('/auth/mfa/disable', {
+      method: 'POST'
     });
   }
 
@@ -366,6 +422,27 @@ class RestaurantApiClient {
       },
       body: JSON.stringify({
         _method: 'DELETE'
+      })
+    });
+  }
+
+  // ==========================================================
+  // ADMIN USERS RESOURCE ENDPOINTS
+  // ==========================================================
+
+  getAdminUsers() {
+    return this.request('/admin/users', { method: 'GET' });
+  }
+
+  updateAdminUser(id, data) {
+    return this.request(`/admin/users/${id}`, {
+      method: 'POST',
+      headers: {
+        'X-HTTP-Method-Override': 'PATCH'
+      },
+      body: JSON.stringify({
+        ...data,
+        _method: 'PATCH'
       })
     });
   }

@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../../lib/prisma');
+const { requirePermission } = require('../../lib/authMiddleware');
 
-// GET /api/chefs & /api/admin/chefs
-router.get('/', async (req, res, next) => {
+// GET /api/chefs & /api/admin/chefs (RBAC: chef:read -> CHEF, ADMIN)
+router.get('/', requirePermission('chef:read'), async (req, res, next) => {
   try {
     const { page, pageSize, specialty, sortBy, sortOrder } = req.query;
     const defaultPageSize = 20;
@@ -100,8 +101,8 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// GET /api/chefs/:id - Retrieve single chef by ID
-router.get('/:id', async (req, res, next) => {
+// GET /api/chefs/:id - Retrieve single chef by ID (RBAC: chef:read -> CHEF, ADMIN)
+router.get('/:id', requirePermission('chef:read'), async (req, res, next) => {
   try {
     const rawId = req.params.id;
     const id = parseInt(rawId, 10);
@@ -144,8 +145,8 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-// POST /api/chefs - Create chef
-router.post('/', async (req, res, next) => {
+// POST /api/chefs - Create chef (RBAC: chef:create -> ADMIN ONLY)
+router.post('/', requirePermission('chef:create'), async (req, res, next) => {
   try {
     const { name, specialty } = req.body;
     const fields = {};
@@ -198,8 +199,8 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-// PATCH /api/chefs/:id - Update chef
-router.patch('/:id', async (req, res, next) => {
+// PATCH /api/chefs/:id - Update chef (RBAC: chef:update -> ADMIN ONLY)
+router.patch('/:id', requirePermission('chef:update'), async (req, res, next) => {
   try {
     const rawId = req.params.id;
     const id = parseInt(rawId, 10);
@@ -283,8 +284,8 @@ router.patch('/:id', async (req, res, next) => {
   }
 });
 
-// DELETE /api/chefs/:id - Cascade delete chef's dishes, keep ingredients
-router.delete('/:id', async (req, res, next) => {
+// DELETE /api/chefs/:id - Cascade delete chef's dishes, keep ingredients (RBAC: chef:delete -> ADMIN ONLY)
+router.delete('/:id', requirePermission('chef:delete'), async (req, res, next) => {
   try {
     const rawId = req.params.id;
     const id = parseInt(rawId, 10);

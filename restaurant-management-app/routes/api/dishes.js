@@ -1,14 +1,40 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../../lib/prisma');
+const { requirePermission } = require('../../lib/authMiddleware');
+const { checkDishCreatePolicy, checkDishUpdatePolicy } = require('../../lib/abac');
 
 const ALLOWED_CATEGORIES = ['Main Course', 'Appetizer', 'Dessert', 'Beverage'];
 
-// GET /api/dishes (Customer) & /api/admin/dishes (Admin)
+// GET /api/dishes (Customer) & /api/admin/dishes (Admin & Chef)
 router.get('/', async (req, res, next) => {
   try {
     const { category, search, page, pageSize, chefId, ingredientId, available, status, sortBy, sortOrder } = req.query;
     const isAdmin = req.baseUrl.includes('/admin');
+
+    // Protect Admin dishes endpoint: only authenticated ACTIVE CHEF or ADMIN
+    if (isAdmin) {
+      if (!req.user) {
+        return res.status(401).json({
+          ok: false,
+          error: { code: 'UNAUTHENTICATED', message: 'Please sign in to access this feature.' }
+        });
+      }
+      if (req.user.status === 'PENDING' || req.user.status === 'pending') {
+        return res.status(403).json({
+          ok: false,
+          requireActivation: true,
+          email: req.user.email,
+          error: { code: 'ACTIVATION_REQUIRED', message: 'Please activate your account before continuing.' }
+        });
+      }
+      if (req.user.role === 'VIEWER') {
+        return res.status(403).json({
+          ok: false,
+          error: { code: 'FORBIDDEN', message: 'You do not have permission to access management views.' }
+        });
+      }
+    }
 
     // 1. Determine and Validate pageSize
     const defaultPageSize = isAdmin ? 20 : 12;
@@ -262,10 +288,24 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-// POST /api/dishes - Create a new dish
-router.post('/', async (req, res, next) => {
+// POST /api/dishes - Create a new dish (RBAC: dish:create, ABAC: own chefId for CHEF)
+router.post('/', requirePermission('dish:create'), async (req, res, next) => {
   try {
     const { name, description, price, category, available, imageUrl, chefId, ingredientIds } = req.body;
+    
+    // ABAC policy check
+    const policy = checkDishCreatePolicy(req.user, chefId);
+    if (!policy.allowed) {
+      return res.status(403).json({
+        ok: false,
+        error: {
+          code: policy.code || 'FORBIDDEN',
+          message: policy.message
+        }
+      });
+    }
+
+    const effectiveChefId = policy.enforcedChefId || parseInt(chefId, 10);
     const fields = {};
 
     // 1. Validate Name
@@ -295,13 +335,12 @@ router.post('/', async (req, res, next) => {
     }
 
     // 4. Validate Chef
-    const parsedChefId = parseInt(chefId, 10);
-    if (!chefId || isNaN(parsedChefId)) {
+    if (!effectiveChefId || isNaN(effectiveChefId)) {
       fields.chefId = 'A valid chef selection is required.';
     } else {
-      const chefExists = await prisma.chef.findUnique({ where: { id: parsedChefId } });
+      const chefExists = await prisma.chef.findUnique({ where: { id: effectiveChefId } });
       if (!chefExists) {
-        fields.chefId = `Chef with ID #${parsedChefId} was not found.`;
+        fields.chefId = `Chef with ID #${effectiveChefId} was not found.`;
       }
     }
 
@@ -351,7 +390,7 @@ router.post('/', async (req, res, next) => {
         category,
         available: available === true || available === 'on' || available === 'true',
         imageUrl: finalImageUrl,
-        chefId: parsedChefId,
+        chefId: effectiveChefId,
         ingredients: {
           connect: formattedIngIds.map(id => ({ id }))
         }
@@ -371,8 +410,8 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-// PATCH /api/dishes/:id - Update existing dish
-router.patch('/:id', async (req, res, next) => {
+// PATCH /api/dishes/:id - Update existing dish (RBAC: dish:update, ABAC: dishes they cook for CHEF)
+router.patch('/:id', requirePermission('dish:update'), async (req, res, next) => {
   try {
     const rawId = req.params.id;
     const id = parseInt(rawId, 10);
@@ -403,6 +442,19 @@ router.patch('/:id', async (req, res, next) => {
     }
 
     const { name, description, price, category, available, imageUrl, chefId, ingredientIds } = req.body;
+
+    // ABAC policy check
+    const policy = checkDishUpdatePolicy(req.user, existingDish, chefId);
+    if (!policy.allowed) {
+      return res.status(403).json({
+        ok: false,
+        error: {
+          code: policy.code || 'FORBIDDEN',
+          message: policy.message
+        }
+      });
+    }
+
     const fields = {};
 
     // 1. Validate Name (unique except current dish)
@@ -527,8 +579,8 @@ router.patch('/:id', async (req, res, next) => {
   }
 });
 
-// DELETE /api/dishes/:id - Delete dish (Chef and ingredients remain)
-router.delete('/:id', async (req, res, next) => {
+// DELETE /api/dishes/:id - Delete dish (RBAC: dish:delete -> ADMIN ONLY)
+router.delete('/:id', requirePermission('dish:delete'), async (req, res, next) => {
   try {
     const rawId = req.params.id;
     const id = parseInt(rawId, 10);

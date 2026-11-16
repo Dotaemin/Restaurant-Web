@@ -9,6 +9,7 @@ import AdminDishesPage from './pages/AdminDishesPage';
 import AdminDishEditPage from './pages/AdminDishEditPage';
 import AdminChefsPage from './pages/AdminChefsPage';
 import AdminIngredientsPage from './pages/AdminIngredientsPage';
+import AdminUsersPage from './pages/AdminUsersPage';
 import NotFoundPage from './pages/NotFoundPage';
 import BadRequestPage from './pages/BadRequestPage';
 
@@ -54,6 +55,9 @@ export default function App() {
             {/* Admin Ingredients Routes */}
             <Route path="/admin/ingredients" element={<AdminIngredientsPage />} />
             <Route path="/admin/ingredient" element={<Navigate to="/admin/ingredients" replace />} />
+
+            {/* Admin Users Management Route */}
+            <Route path="/admin/users" element={<AdminUsersPage />} />
           </Route>
 
           {/* Error Pages */}

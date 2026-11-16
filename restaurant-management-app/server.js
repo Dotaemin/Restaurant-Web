@@ -5,12 +5,13 @@ const cookieParser = require('cookie-parser');
 const methodOverride = require('method-override');
 
 const { sessionMiddleware } = require('./lib/authMiddleware');
-const { csrfProtection } = require('./lib/csrf');   // with the other requires
+const { csrfProtection } = require('./lib/csrf');
 
 const authRouter = require('./routes/auth');
 const apiDishesRouter = require('./routes/api/dishes');
 const apiChefsRouter = require('./routes/api/chefs');
 const apiIngredientsRouter = require('./routes/api/ingredients');
+const apiUsersRouter = require('./routes/api/users');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -67,6 +68,7 @@ app.use('/api/dishes', apiDishesRouter);
 app.use('/api/admin/dishes', apiDishesRouter);
 app.use('/api/admin/chefs', apiChefsRouter);
 app.use('/api/admin/ingredients', apiIngredientsRouter);
+app.use('/api/admin/users', apiUsersRouter);
 
 // Aliases for chefs & ingredients
 app.use('/api/chefs', apiChefsRouter);

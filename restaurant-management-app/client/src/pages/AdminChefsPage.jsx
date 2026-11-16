@@ -39,6 +39,11 @@ export default function AdminChefsPage() {
   const [editingChefId, setEditingChefId] = useState(null);
   const [formData, setFormData] = useState({ name: '', specialty: '' });
   const [fieldErrors, setFieldErrors] = useState({});
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    api.getCurrentUser().then(res => { if (res?.ok) setCurrentUser(res.user); });
+  }, []);
 
   const loadChefs = async (pageToLoad = currentPage) => {
     setLoading(true);
@@ -230,6 +235,7 @@ export default function AdminChefsPage() {
           </p>
         </div>
 
+        {(!currentUser || currentUser.role === 'ADMIN') && (
         <button
           type="button"
           onClick={() => {
@@ -247,6 +253,7 @@ export default function AdminChefsPage() {
           <Plus className="w-5 h-5" />
           <span>{showForm && !editingChefId ? 'Close Form' : 'Add New Chef'}</span>
         </button>
+        )}
       </div>
 
       {/* Success Notification Banner */}
@@ -473,6 +480,7 @@ export default function AdminChefsPage() {
                     )}
                   </td>
                   <td className="py-3.5 px-4 text-right">
+                    {(!currentUser || currentUser.role === 'ADMIN') ? (
                     <div className="flex items-center justify-end gap-2">
                       <button
                         type="button"
@@ -493,6 +501,9 @@ export default function AdminChefsPage() {
                         <span>Delete</span>
                       </button>
                     </div>
+                    ) : (
+                      <span className="text-2xs text-slate-400 italic">View only</span>
+                    )}
                   </td>
                 </tr>
               ))

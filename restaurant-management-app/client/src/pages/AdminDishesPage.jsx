@@ -56,6 +56,7 @@ export default function AdminDishesPage() {
     ingredientIds: []
   });
   const [fieldErrors, setFieldErrors] = useState({});
+  const [currentUser, setCurrentUser] = useState(null);
 
   // Fetch all required data on mount and on filter/sort/page change
   const loadData = async (pageToLoad = currentPage) => {
@@ -74,7 +75,8 @@ export default function AdminDishesPage() {
         sortOrder: dir
       };
 
-      const [dishesRes, chefsRes, ingredientsRes] = await Promise.all([
+      const [dishesRes, chefsRes, ingredientsRes, meRes] = await Promise.all([
+        api.getCurrentUser(),
         api.getAdminDishes(queryParams),
         api.getChefs({ pageSize: 100 }),
         api.getIngredients({ pageSize: 100 })
@@ -893,23 +895,35 @@ export default function AdminDishesPage() {
                   </td>
                   <td className="py-3.5 px-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <Link
-                        to={`/admin/dishes/${dish.id}/edit`}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
-                        title="Edit Dish"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                        <span>Edit</span>
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteDish(dish)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 transition-colors"
-                        title="Delete Dish"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Delete</span>
-                      </button>
+                      {(!currentUser || currentUser.role === 'ADMIN' || (currentUser.role === 'CHEF' && dish.chefId === currentUser.chefId)) ? (
+                        <Link
+                          to={`/admin/dishes/${dish.id}/edit`}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
+                          title="Edit Dish"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                          <span>Edit</span>
+                        </Link>
+                      ) : (
+                        <span
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 bg-slate-50 cursor-not-allowed"
+                          title="You can only edit dishes that you cook."
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                          <span>Edit</span>
+                        </span>
+                      )}
+                      {(!currentUser || currentUser.role === 'ADMIN') && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteDish(dish)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 transition-colors"
+                          title="Delete Dish"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete</span>
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -970,21 +984,30 @@ export default function AdminDishesPage() {
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
-                <Link
-                  to={`/admin/dishes/${dish.id}/edit`}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                  <span>Edit</span>
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteDish(dish)}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete</span>
-                </button>
+                {(!currentUser || currentUser.role === 'ADMIN' || (currentUser.role === 'CHEF' && dish.chefId === currentUser.chefId)) ? (
+                  <Link
+                    to={`/admin/dishes/${dish.id}/edit`}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                    <span>Edit</span>
+                  </Link>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-300 bg-slate-50 cursor-not-allowed">
+                    <Edit2 className="w-3.5 h-3.5" />
+                    <span>Edit</span>
+                  </span>
+                )}
+                {(!currentUser || currentUser.role === 'ADMIN') && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteDish(dish)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete</span>
+                  </button>
+                )}
               </div>
             </div>
           ))

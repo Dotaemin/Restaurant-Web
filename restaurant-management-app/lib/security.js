@@ -121,10 +121,6 @@ async function verifyRecaptcha(recaptchaResponse, remoteIp) {
 
 /**
  * Sign session JWT using jose library.
- * Header : { alg: 'HS256', typ: 'JWT' }
- * Payload: { sid, role, sub (user id), iat, exp }
- * NOTE: role is informational only. Authorization must keep using the
- * role loaded from the database (req.user.role), never the token's role.
  */
 async function signSessionJwt(user) {
   return await new SignJWT({ role: user.role })
@@ -133,6 +129,31 @@ async function signSessionJwt(user) {
     .setIssuedAt()
     .setExpirationTime('15m')
     .sign(JWT_SECRET_KEY);
+}
+
+/**
+ * Sign temporary pre-auth JWT token for pending MFA verification (5-minute expiry)
+ */
+async function signMfaPendingJwt(user) {
+  return await new SignJWT({ type: 'mfa_pending', userId: user.id })
+    .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+    .setSubject(String(user.id))
+    .setIssuedAt()
+    .setExpirationTime('5m')
+    .sign(JWT_SECRET_KEY);
+}
+
+/**
+ * Verify temporary MFA token
+ */
+async function verifyMfaPendingJwt(token) {
+  try {
+    const { payload } = await jwtVerify(token, JWT_SECRET_KEY);
+    if (payload.type !== 'mfa_pending') return null;
+    return payload;
+  } catch (err) {
+    return null;
+  }
 }
 
 /**
@@ -171,6 +192,8 @@ module.exports = {
   validateEmail,
   verifyRecaptcha,
   signSessionJwt,
+  signMfaPendingJwt,
+  verifyMfaPendingJwt,
   verifySessionJwt,
   generateCsrfToken,
   verifyCsrfToken

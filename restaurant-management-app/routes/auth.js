@@ -13,11 +13,23 @@ const {
   validateEmail,
   verifyRecaptcha,
   signSessionJwt,
+  signMfaPendingJwt,
+  verifyMfaPendingJwt,
   verifySessionJwt,
   generateCsrfToken
 } = require('../lib/security');
+const {
+  generateMfaSecret,
+  createTotpInstance,
+  generateQrCodeDataUrl,
+  generateRecoveryCodes,
+  hashRecoveryCodes,
+  verifyRecoveryCode,
+  verifyInitialToken,
+  verifyTokenWithDrift
+} = require('../lib/mfa');
 const { sendActivationOtpEmail, sendPasswordResetEmail } = require('../lib/mailer');
-const { requireGuest } = require('../lib/authMiddleware');
+const { requireAuth, requireGuest } = require('../lib/authMiddleware');
 
 // In-memory rate limiting map for POST /forget (2 minutes cooldown per target)
 const forgetRateLimitMap = new Map();
@@ -28,12 +40,8 @@ function sanitizeUser(user) {
   const safe = { ...user };
   delete safe.passwordHash;
   delete safe.salt;
+  delete safe.mfaSecret;
   return safe;
-}
-
-// Helper to determine if incoming request expects JSON response
-function isJsonRequest(req) {
-  return true;
 }
 
 // GET /api/auth/me - Returns current logged in user (or null)
@@ -56,39 +64,25 @@ router.get('/api/auth/config', (req, res) => {
 // ==========================================
 // 1. REGISTRATION
 // ==========================================
-
-
-
-// POST /register and POST /api/auth/register
 const handleRegister = async (req, res) => {
-  const { username, email, password, confirmPassword } = req.body;
+  const { username, email, password, confirmPassword, role } = req.body;
   const recaptchaResponse = req.body['g-recaptcha-response'] || req.body.recaptchaToken;
-  const formData = { username: username || '', email: email || '' };
 
   const renderValidationError = (message) => {
-    if (isJsonRequest(req)) {
-      return res.status(400).json({
-        ok: false,
-        error: {
-          code: 'VALIDATION_FAILED',
-          message
-        }
-      });
-    }
-    return res.status(400).render('auth/register', {
-      title: 'Register - B.H.T Diner',
-      error: 'VALIDATION_FAILED',
-      errorMessage: message,
-      formData,
-      recaptchaSiteKey: RECAPTCHA_SITE_KEY
+    return res.status(400).json({
+      ok: false,
+      error: {
+        code: 'VALIDATION_FAILED',
+        message
+      }
     });
   };
 
   try {
-    // 1. Verify Google reCAPTCHA at server BEFORE hashing password, creating account, or sending OTP
+    // 1. Verify Google reCAPTCHA
     const isHuman = await verifyRecaptcha(recaptchaResponse, req.ip);
     if (!isHuman) {
-      return renderValidationError('Please verify that you are not a robot before proceeding.');
+      return renderValidationError('Please complete the security check to continue.');
     }
 
     // 2. Validate Username
@@ -97,7 +91,7 @@ const handleRegister = async (req, res) => {
     }
     const cleanUsername = username.trim();
 
-    // 3. Validate Email (must end with @gmail.com)
+    // 3. Validate Email
     if (!validateEmail(email)) {
       return renderValidationError('Please provide a valid Gmail address (ending with @gmail.com).');
     }
@@ -132,23 +126,55 @@ const handleRegister = async (req, res) => {
       return renderValidationError('An account with this email address already exists.');
     }
 
-    // 7. Hash password using bcrypt incorporating a random 5-digit salt string
+    // 7. Validate Role (VIEWER, CHEF, ADMIN)
+    let assignedRole = 'VIEWER';
+    if (role && ['VIEWER', 'CHEF', 'ADMIN'].includes(role.toUpperCase())) {
+      assignedRole = role.toUpperCase();
+    }
+
+    // 8. Hash password using bcrypt incorporating a random 5-digit salt string
     const salt = generate5DigitSalt();
     const passwordHash = await hashPassword(password, salt);
 
-    // 8. Create user in database (status: "pending", role: "Viewer")
+    // 9. If CHEF or ADMIN: mandatory MFA setup upon Registration
+    let mfaSetup = null;
+    let mfaSecret = null;
+    let recoveryCodesPlain = null;
+    let recoveryCodesHashed = null;
+    const isMfaMandatory = assignedRole === 'CHEF' || assignedRole === 'ADMIN';
+
+    if (isMfaMandatory) {
+      mfaSecret = generateMfaSecret();
+      const totp = createTotpInstance(mfaSecret, cleanEmail);
+      const qrCodeDataUrl = await generateQrCodeDataUrl(totp);
+      recoveryCodesPlain = generateRecoveryCodes(10);
+      recoveryCodesHashed = await hashRecoveryCodes(recoveryCodesPlain);
+
+      mfaSetup = {
+        qrCode: qrCodeDataUrl,
+        secret: mfaSecret,
+        recoveryCodes: recoveryCodesPlain
+      };
+    }
+
+    // 10. Create user in database (status: PENDING)
     const newUser = await prisma.user.create({
       data: {
         username: cleanUsername,
         email: cleanEmail,
         passwordHash,
         salt,
-        role: 'Viewer',
-        status: 'pending'
+        role: assignedRole,
+        status: 'PENDING',
+        mfaSecret: isMfaMandatory ? mfaSecret : null,
+        mfaEnabled: isMfaMandatory ? true : false,
+        recoveryCodes: isMfaMandatory && recoveryCodesHashed ? {
+          create: recoveryCodesHashed.map(codeHash => ({ codeHash }))
+        } : undefined
       }
     });
 
-    // 9. Generate 6-digit OTP and create ActivationChallenge
+    // 11. Generate 6-digit OTP and create ActivationChallenge
     const otp = generate6DigitOtp();
     const expiresAt = new Date(Date.now() + 2 * 60 * 1000); // 2 minutes
 
@@ -173,57 +199,39 @@ const handleRegister = async (req, res) => {
       }
     });
 
-    // 10. Send OTP through Google Gmail SMTP using Nodemailer
+    // 12. Send OTP email
     await sendActivationOtpEmail(cleanEmail, otp);
 
-    if (isJsonRequest(req)) {
-      return res.status(200).json({
-        ok: true,
-        message: 'Account created. Please activate with the OTP code sent to your email.',
-        email: cleanEmail
-      });
-    }
-
-    return res.redirect(`/activation?email=${encodeURIComponent(cleanEmail)}&msg=otp_sent`);
+    return res.status(200).json({
+      ok: true,
+      message: 'Account created. Please activate with the verification code sent to your email.',
+      email: cleanEmail,
+      mfaSetup
+    });
   } catch (err) {
     console.error('Registration processing error:', err.message);
     return renderValidationError('An unexpected problem occurred while creating your account. Please try again.');
   }
 };
 
-router.post('/register', requireGuest, handleRegister);
 router.post('/api/auth/register', handleRegister);
 
 // ==========================================
 // 2. ACTIVATION
 // ==========================================
-
-
-
-// POST /activation and POST /api/auth/activation
 const handleActivation = async (req, res) => {
-  const { email, otp } = req.body;
+  const { email, otp, mfaCode } = req.body;
   const cleanEmail = (email || '').trim().toLowerCase();
   const cleanOtp = (otp || '').trim();
 
   const renderOtpError = (message, remainingAttempts = 3) => {
-    if (isJsonRequest(req)) {
-      return res.status(400).json({
-        ok: false,
-        error: {
-          code: 'ACTIVATION_FAILED',
-          message,
-          remainingAttempts
-        }
-      });
-    }
-    return res.status(400).render('auth/activation', {
-      title: 'Account Activation - B.H.T Diner',
-      email: cleanEmail,
-      error: 'activation_failed',
-      errorMessage: message,
-      msg: null,
-      remainingAttempts
+    return res.status(400).json({
+      ok: false,
+      error: {
+        code: 'ACTIVATION_FAILED',
+        message,
+        remainingAttempts
+      }
     });
   };
 
@@ -241,18 +249,12 @@ const handleActivation = async (req, res) => {
 
     // Check if account activation is locked
     if (challenge.lockedUntil && new Date() < new Date(challenge.lockedUntil)) {
-      if (isJsonRequest(req)) {
-        return res.status(429).json({
-          ok: false,
-          error: {
-            code: 'TOO_MANY_ATTEMPTS',
-            message: "You've failed OTP activation too many times. Please wait 5 minutes before retrying."
-          }
-        });
-      }
-      return res.status(429).render('errors/429', {
-        title: 'Too Many Attempts',
-        message: "You've failed OTP activation too many times. Please wait 5 minutes before retrying."
+      return res.status(429).json({
+        ok: false,
+        error: {
+          code: 'TOO_MANY_ATTEMPTS',
+          message: "You've failed OTP activation too many times. Please wait 5 minutes before retrying."
+        }
       });
     }
 
@@ -264,7 +266,6 @@ const handleActivation = async (req, res) => {
       const newAttempts = (challenge.attempts || 0) + 1;
       let lockedUntil = challenge.lockedUntil;
 
-      // Limit OTP input: 3 times
       if (newAttempts >= 3) {
         lockedUntil = new Date(Date.now() + 5 * 60 * 1000); // Lock for 5 minutes
       }
@@ -291,13 +292,24 @@ const handleActivation = async (req, res) => {
       );
     }
 
-    // Correct OTP: set status to active, NO auto login
+    // If user is CHEF or ADMIN and MFA is configured, calculate clock drift if mfaCode was supplied
+    let detectedDrift = 0;
+    if (user.mfaSecret && mfaCode) {
+      const totp = createTotpInstance(user.mfaSecret, user.email);
+      const initResult = verifyInitialToken(totp, mfaCode);
+      if (initResult.valid) {
+        detectedDrift = initResult.driftSeconds;
+      }
+    }
+
+    // Correct OTP: set status to ACTIVE, NO auto login
     await prisma.$transaction([
       prisma.user.update({
         where: { id: user.id },
         data: {
-          status: 'active',
-          emailVerifiedAt: new Date()
+          status: 'ACTIVE',
+          emailVerifiedAt: new Date(),
+          mfaDrift: detectedDrift
         }
       }),
       prisma.activationChallenge.update({
@@ -310,24 +322,19 @@ const handleActivation = async (req, res) => {
       })
     ]);
 
-    if (isJsonRequest(req)) {
-      return res.status(200).json({
-        ok: true,
-        message: 'Account activated successfully! Please sign in.'
-      });
-    }
-
-    return res.redirect('/login?msg=activated');
+    return res.status(200).json({
+      ok: true,
+      message: 'Account activated successfully! Please sign in.'
+    });
   } catch (err) {
     console.error('Activation error:', err.message);
     return renderOtpError('An error occurred during activation. Please try again.');
   }
 };
 
-router.post('/activation', handleActivation);
 router.post('/api/auth/activation', handleActivation);
 
-// POST /activation/resend and POST /api/auth/activation/resend
+// POST /api/auth/activation/resend
 const handleActivationResend = async (req, res) => {
   const { email } = req.body;
   const cleanEmail = (email || '').trim().toLowerCase();
@@ -339,20 +346,19 @@ const handleActivationResend = async (req, res) => {
     });
 
     if (!user || !user.activationChallenge) {
-      if (isJsonRequest(req)) {
-        return res.status(200).json({ ok: true, message: 'A new activation code has been sent if the email exists.' });
-      }
-      return res.redirect(`/activation?email=${encodeURIComponent(cleanEmail)}&msg=code_resent`);
+      return res.status(200).json({ ok: true, message: 'A new activation code has been sent if the email exists.' });
     }
 
     const challenge = user.activationChallenge;
 
     if (challenge.lockedUntil && new Date() < new Date(challenge.lockedUntil)) {
-      const lockMsg = "You've failed OTP activation too many times. Please wait 5 minutes before retrying.";
-      if (isJsonRequest(req)) {
-        return res.status(429).json({ ok: false, error: { code: 'TOO_MANY_ATTEMPTS', message: lockMsg } });
-      }
-      return res.status(429).render('errors/429', { title: 'Too Many Attempts', message: lockMsg });
+      return res.status(429).json({
+        ok: false,
+        error: {
+          code: 'TOO_MANY_ATTEMPTS',
+          message: "You've failed OTP activation too many times. Please wait 5 minutes before retrying."
+        }
+      });
     }
 
     // 1-minute cooldown enforcement
@@ -360,17 +366,12 @@ const handleActivationResend = async (req, res) => {
       const elapsedMs = Date.now() - new Date(challenge.lastSentAt).getTime();
       if (elapsedMs < 60 * 1000) {
         const remainingSeconds = Math.ceil((60 * 1000 - elapsedMs) / 1000);
-        const cooldownMsg = `Please wait ${remainingSeconds} seconds before requesting a new code.`;
-        if (isJsonRequest(req)) {
-          return res.status(400).json({ ok: false, error: { code: 'COOLDOWN_ACTIVE', message: cooldownMsg } });
-        }
-        return res.status(400).render('auth/activation', {
-          title: 'Account Activation - B.H.T Diner',
-          email: cleanEmail,
-          error: 'cooldown_active',
-          errorMessage: cooldownMsg,
-          msg: null,
-          remainingAttempts: Math.max(0, 3 - (challenge.attempts || 0))
+        return res.status(400).json({
+          ok: false,
+          error: {
+            code: 'COOLDOWN_ACTIVE',
+            message: `Please wait ${remainingSeconds} seconds before requesting a new code.`
+          }
         });
       }
     }
@@ -392,30 +393,18 @@ const handleActivationResend = async (req, res) => {
 
     await sendActivationOtpEmail(cleanEmail, newOtp);
 
-    if (isJsonRequest(req)) {
-      return res.status(200).json({ ok: true, message: 'A fresh activation code has been sent to your email.' });
-    }
-
-    return res.redirect(`/activation?email=${encodeURIComponent(cleanEmail)}&msg=code_resent`);
+    return res.status(200).json({ ok: true, message: 'A fresh activation code has been sent to your email.' });
   } catch (err) {
     console.error('Error in resending OTP:', err.message);
-    if (isJsonRequest(req)) {
-      return res.status(500).json({ ok: false, error: { code: 'SERVER_ERROR', message: 'Unable to resend activation code.' } });
-    }
-    return res.redirect(`/activation?email=${encodeURIComponent(cleanEmail)}&error=resend_failed`);
+    return res.status(500).json({ ok: false, error: { code: 'SERVER_ERROR', message: 'Unable to resend activation code.' } });
   }
 };
 
-router.post('/activation/resend', handleActivationResend);
 router.post('/api/auth/activation/resend', handleActivationResend);
 
 // ==========================================
-// 3. LOGIN & BRUTE FORCE PROTECTION
+// 3. LOGIN & BRUTE FORCE PROTECTION + MFA
 // ==========================================
-
-
-
-// POST /login and POST /api/auth/login
 const handleLogin = async (req, res) => {
   const { identifier, password } = req.body;
   const recaptchaResponse = req.body['g-recaptcha-response'] || req.body.recaptchaToken;
@@ -424,23 +413,13 @@ const handleLogin = async (req, res) => {
   const vagueErrorMessage = 'Please check your details and try retyping your Email/Username and Password.';
 
   const renderLoginError = (requiresCaptcha = false, customMessage = null) => {
-    if (isJsonRequest(req)) {
-      return res.status(400).json({
-        ok: false,
-        error: {
-          code: 'INVALID_CREDENTIALS',
-          message: customMessage || vagueErrorMessage
-        },
-        requireCaptcha: requiresCaptcha
-      });
-    }
-    return res.status(400).render('auth/login', {
-      title: 'Sign In - B.H.T Diner',
-      error: 'invalid_credentials',
-      errorMessage: customMessage || vagueErrorMessage,
-      msg: null,
-      requireCaptcha: requiresCaptcha,
-      recaptchaSiteKey: RECAPTCHA_SITE_KEY
+    return res.status(400).json({
+      ok: false,
+      error: {
+        code: 'INVALID_CREDENTIALS',
+        message: customMessage || vagueErrorMessage
+      },
+      requireCaptcha: requiresCaptcha
     });
   };
 
@@ -449,13 +428,15 @@ const handleLogin = async (req, res) => {
       return renderLoginError(false);
     }
 
-    // Look up target account by Username OR Email
     const user = await prisma.user.findFirst({
       where: {
         OR: [
           { username: cleanId },
           { email: cleanId.toLowerCase() }
         ]
+      },
+      include: {
+        chef: true
       }
     });
 
@@ -465,15 +446,14 @@ const handleLogin = async (req, res) => {
 
     const now = new Date();
 
-    // Check account lockout (5 failed attempts -> 3 minutes lockout)
+    // Check account lockout (5 failed password attempts -> 3 minutes lockout)
     if (user.lockoutUntil && now < new Date(user.lockoutUntil)) {
-      const lockMsg = 'Your account has been temporarily paused due to several unsuccessful attempts. Please wait 3 minutes before retrying.';
-      if (isJsonRequest(req)) {
-        return res.status(429).json({ ok: false, error: { code: 'ACCOUNT_LOCKED', message: lockMsg } });
-      }
-      return res.status(429).render('errors/429', {
-        title: 'Account Temporarily Locked',
-        message: lockMsg
+      return res.status(429).json({
+        ok: false,
+        error: {
+          code: 'ACCOUNT_LOCKED',
+          message: 'Your account has been temporarily paused due to several unsuccessful attempts. Please wait 3 minutes before retrying.'
+        }
       });
     }
 
@@ -516,13 +496,12 @@ const handleLogin = async (req, res) => {
       });
 
       if (updatedAttempts >= 5) {
-        const lockMsg = 'Your account has been temporarily paused due to several unsuccessful attempts. Please wait 3 minutes before retrying.';
-        if (isJsonRequest(req)) {
-          return res.status(429).json({ ok: false, error: { code: 'ACCOUNT_LOCKED', message: lockMsg } });
-        }
-        return res.status(429).render('errors/429', {
-          title: 'Account Temporarily Locked',
-          message: lockMsg
+        return res.status(429).json({
+          ok: false,
+          error: {
+            code: 'ACCOUNT_LOCKED',
+            message: 'Your account has been temporarily paused due to several unsuccessful attempts. Please wait 3 minutes before retrying.'
+          }
         });
       }
 
@@ -530,21 +509,19 @@ const handleLogin = async (req, res) => {
     }
 
     // If account is still pending, prompt activation
-    if (user.status === 'pending') {
-      if (isJsonRequest(req)) {
-        return res.status(403).json({
-          ok: false,
-          error: {
-            code: 'ACTIVATION_REQUIRED',
-            message: 'Please activate your account before logging in.'
-          },
-          email: user.email
-        });
-      }
-      return res.redirect(`/activation?email=${encodeURIComponent(user.email)}&msg=activation_required`);
+    if (user.status === 'PENDING' || user.status === 'pending') {
+      return res.status(403).json({
+        ok: false,
+        requireActivation: true,
+        email: user.email,
+        error: {
+          code: 'ACTIVATION_REQUIRED',
+          message: 'Please activate your account before continuing.'
+        }
+      });
     }
 
-    // Reset failed login tracking on success
+    // Reset failed password attempts on successful password check
     await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -554,10 +531,39 @@ const handleLogin = async (req, res) => {
       }
     });
 
+    // ========================================================
+    // MFA ENFORCEMENT CHECK
+    // Mandatory for CHEF & ADMIN, or if user enabled MFA
+    // ========================================================
+    const requiresMfa = user.mfaEnabled || user.role === 'CHEF' || user.role === 'ADMIN';
+
+    if (requiresMfa) {
+      // Check if MFA is temporarily locked out
+      if (user.mfaLockedUntil && now < new Date(user.mfaLockedUntil)) {
+        const remainingMinutes = Math.max(1, Math.ceil((new Date(user.mfaLockedUntil).getTime() - now.getTime()) / 60000));
+        return res.status(429).json({
+          ok: false,
+          error: {
+            code: 'MFA_LOCKED',
+            message: `Too many unsuccessful verification attempts. Please wait ${remainingMinutes} minute(s) before trying again.`
+          }
+        });
+      }
+
+      // Generate temporary short-lived MFA pending token
+      const mfaToken = await signMfaPendingJwt(user);
+      return res.status(200).json({
+        ok: true,
+        mfaRequired: true,
+        mfaToken,
+        message: 'Multi-factor authentication required. Please enter your 6-digit code or a recovery code.'
+      });
+    }
+
+    // No MFA required: issue session JWT
     const jwtToken = await signSessionJwt(user);
-    const claims = await verifySessionJwt(jwtToken);  
-  
-    // Set cookie
+    const claims = await verifySessionJwt(jwtToken);
+
     res.cookie('auth_token', jwtToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -565,50 +571,349 @@ const handleLogin = async (req, res) => {
       maxAge: 15 * 60 * 1000
     });
 
-    if (isJsonRequest(req)) {
-      return res.status(200).json({
-        ok: true,
-        user: sanitizeUser(user),
-        csrfToken: generateCsrfToken(claims)
-      });
-    }
-
-    // "POST /login: Send code 303 and redirect when successfully logged in."
-    return res.redirect(303, '/dishes');
+    return res.status(200).json({
+      ok: true,
+      user: sanitizeUser(user),
+      csrfToken: generateCsrfToken(claims)
+    });
   } catch (err) {
     console.error('Login error:', err.message);
     return renderLoginError(false);
   }
 };
 
-router.post('/login', requireGuest, handleLogin);
 router.post('/api/auth/login', handleLogin);
 
 // ==========================================
-// 4. LOGOUT
+// 4. MFA VERIFICATION (Login Phase 2)
 // ==========================================
+router.post('/api/auth/mfa/verify', async (req, res) => {
+  const { mfaToken, code, isRecoveryCode } = req.body;
 
-const handleLogout = async (req, res) => {
-  // Stateless: nothing to delete server-side, just clear the cookie.
-  res.clearCookie('auth_token');
-
-  if (isJsonRequest(req)) {
-    return res.status(200).json({ ok: true, message: 'Logged out successfully.' });
+  if (!mfaToken) {
+    return res.status(401).json({
+      ok: false,
+      error: { code: 'UNAUTHENTICATED', message: 'Missing verification session. Please sign in again.' }
+    });
   }
-  return res.redirect('/login?msg=logged_out');
-};
 
-router.post('/logout', handleLogout);
-router.post('/api/auth/logout', handleLogout);
+  const payload = await verifyMfaPendingJwt(mfaToken);
+  if (!payload || !payload.userId) {
+    return res.status(401).json({
+      ok: false,
+      error: { code: 'SESSION_EXPIRED', message: 'Your verification session has expired. Please sign in again.' }
+    });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: payload.userId },
+    include: { recoveryCodes: true, chef: true }
+  });
+
+  if (!user) {
+    return res.status(401).json({
+      ok: false,
+      error: { code: 'UNAUTHENTICATED', message: 'User not found. Please sign in again.' }
+    });
+  }
+
+  const now = new Date();
+
+  // Check MFA lockout (3 failed attempts -> 5 minutes lockout)
+  if (user.mfaLockedUntil && now < new Date(user.mfaLockedUntil)) {
+    const remainingMinutes = Math.max(1, Math.ceil((new Date(user.mfaLockedUntil).getTime() - now.getTime()) / 60000));
+    return res.status(429).json({
+      ok: false,
+      error: {
+        code: 'MFA_LOCKED',
+        message: `Too many unsuccessful verification attempts. Please wait ${remainingMinutes} minute(s) before trying again.`
+      }
+    });
+  }
+
+  const cleanCode = (code || '').trim();
+  if (!cleanCode) {
+    return res.status(400).json({
+      ok: false,
+      error: { code: 'CODE_REQUIRED', message: 'Please enter your verification code.' }
+    });
+  }
+
+  // --- PATH A: RECOVERY CODE ---
+  if (isRecoveryCode) {
+    const matchingRecord = await verifyRecoveryCode(cleanCode, user.recoveryCodes);
+
+    if (!matchingRecord) {
+      const attempts = (user.recoveryCodeAttempts || 0) + 1;
+      let mfaLockedUntil = null;
+      if (attempts >= 3) {
+        mfaLockedUntil = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes lockout
+      }
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          recoveryCodeAttempts: attempts,
+          mfaFailedAttempts: (user.mfaFailedAttempts || 0) + 1,
+          mfaLockedUntil
+        }
+      });
+
+      if (attempts >= 3) {
+        return res.status(429).json({
+          ok: false,
+          error: {
+            code: 'MFA_LOCKED',
+            message: 'You have entered an invalid recovery code 3 times. Please wait 5 minutes before trying again.'
+          }
+        });
+      }
+
+      return res.status(400).json({
+        ok: false,
+        error: {
+          code: 'INVALID_RECOVERY_CODE',
+          message: `The recovery code entered is incorrect. You have ${3 - attempts} attempt(s) remaining.`
+        }
+      });
+    }
+
+    // Success with recovery code: mark used and reset counters
+    await prisma.$transaction([
+      prisma.recoveryCode.update({
+        where: { id: matchingRecord.id },
+        data: { usedAt: new Date() }
+      }),
+      prisma.user.update({
+        where: { id: user.id },
+        data: {
+          recoveryCodeAttempts: 0,
+          mfaFailedAttempts: 0,
+          mfaLockedUntil: null
+        }
+      })
+    ]);
+
+    // Issue session JWT
+    const jwtToken = await signSessionJwt(user);
+    const claims = await verifySessionJwt(jwtToken);
+
+    res.cookie('auth_token', jwtToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 15 * 60 * 1000
+    });
+
+    return res.status(200).json({
+      ok: true,
+      user: sanitizeUser(user),
+      csrfToken: generateCsrfToken(claims),
+      message: 'Verified successfully using recovery code.'
+    });
+  }
+
+  // --- PATH B: TOTP CODE ---
+  if (!user.mfaSecret) {
+    return res.status(400).json({
+      ok: false,
+      error: { code: 'MFA_NOT_CONFIGURED', message: 'Multi-factor authentication is not configured for this account.' }
+    });
+  }
+
+  const totp = createTotpInstance(user.mfaSecret, user.email);
+  const isValidTotp = verifyTokenWithDrift(totp, cleanCode, user.mfaDrift || 0);
+
+  if (!isValidTotp) {
+    const attempts = (user.mfaFailedAttempts || 0) + 1;
+    let mfaLockedUntil = null;
+    if (attempts >= 3) {
+      mfaLockedUntil = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes lockout
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        mfaFailedAttempts: attempts,
+        mfaLockedUntil
+      }
+    });
+
+    if (attempts >= 3) {
+      return res.status(429).json({
+        ok: false,
+        error: {
+          code: 'MFA_LOCKED',
+          message: 'You have entered an invalid verification code 3 times. Please wait 5 minutes before trying again.'
+        }
+      });
+    }
+
+    return res.status(400).json({
+      ok: false,
+      error: {
+        code: 'INVALID_TOTP',
+        message: `The 6-digit verification code is incorrect. You have ${3 - attempts} attempt(s) remaining.`
+      }
+    });
+  }
+
+  // Reset MFA failed tracking
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      mfaFailedAttempts: 0,
+      recoveryCodeAttempts: 0,
+      mfaLockedUntil: null
+    }
+  });
+
+  // Issue session JWT
+  const jwtToken = await signSessionJwt(user);
+  const claims = await verifySessionJwt(jwtToken);
+
+  res.cookie('auth_token', jwtToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 15 * 60 * 1000
+  });
+
+  return res.status(200).json({
+    ok: true,
+    user: sanitizeUser(user),
+    csrfToken: generateCsrfToken(claims),
+    message: 'Signed in successfully.'
+  });
+});
 
 // ==========================================
-// 5. FORGET PASSWORD & RESET TOKEN
+// 5. VIEWER MFA TOGGLE (Turn On / Off)
 // ==========================================
 
+// POST /api/auth/mfa/setup - Start MFA setup for logged in VIEWER
+router.post('/api/auth/mfa/setup', requireAuth, async (req, res) => {
+  const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+  if (!user) {
+    return res.status(401).json({ ok: false, error: { code: 'UNAUTHENTICATED', message: 'Please sign in.' } });
+  }
 
+  const secret = generateMfaSecret();
+  const totp = createTotpInstance(secret, user.email);
+  const qrCodeDataUrl = await generateQrCodeDataUrl(totp);
 
-// POST /forget and POST /api/auth/forget
-const handleForget = async (req, res) => {
+  return res.status(200).json({
+    ok: true,
+    secret,
+    qrCode: qrCodeDataUrl
+  });
+});
+
+// POST /api/auth/mfa/confirm - Verify code, calculate clock drift, save secret and issue 10 recovery codes
+router.post('/api/auth/mfa/confirm', requireAuth, async (req, res) => {
+  const { secret, code } = req.body;
+  if (!secret || !code) {
+    return res.status(400).json({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message: 'Secret and verification code are required.' }
+    });
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+  if (!user) {
+    return res.status(401).json({ ok: false, error: { code: 'UNAUTHENTICATED', message: 'Please sign in.' } });
+  }
+
+  const totp = createTotpInstance(secret, user.email);
+  const initResult = verifyInitialToken(totp, code);
+
+  if (!initResult.valid) {
+    return res.status(400).json({
+      ok: false,
+      error: { code: 'INVALID_CODE', message: 'The verification code entered does not match. Please verify your authenticator app.' }
+    });
+  }
+
+  // Generate 10 recovery codes
+  const plainCodes = generateRecoveryCodes(10);
+  const hashedCodes = await hashRecoveryCodes(plainCodes);
+
+  // Update user in transaction: remove any existing recovery codes, save new secret & drift
+  await prisma.$transaction([
+    prisma.recoveryCode.deleteMany({ where: { userId: user.id } }),
+    prisma.recoveryCode.createMany({
+      data: hashedCodes.map(codeHash => ({ userId: user.id, codeHash }))
+    }),
+    prisma.user.update({
+      where: { id: user.id },
+      data: {
+        mfaSecret: secret,
+        mfaEnabled: true,
+        mfaDrift: initResult.driftSeconds,
+        mfaFailedAttempts: 0,
+        mfaLockedUntil: null
+      }
+    })
+  ]);
+
+  return res.status(200).json({
+    ok: true,
+    recoveryCodes: plainCodes,
+    message: 'Multi-factor authentication successfully enabled! Please copy and securely store your 10 recovery codes.'
+  });
+});
+
+// POST /api/auth/mfa/disable - Disable MFA for logged in VIEWER
+router.post('/api/auth/mfa/disable', requireAuth, async (req, res) => {
+  const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+  if (!user) {
+    return res.status(401).json({ ok: false, error: { code: 'UNAUTHENTICATED', message: 'Please sign in.' } });
+  }
+
+  // Only VIEWERS can disable MFA. Chefs and Admins must maintain it enabled.
+  if (user.role === 'CHEF' || user.role === 'ADMIN') {
+    return res.status(403).json({
+      ok: false,
+      error: {
+        code: 'FORBIDDEN',
+        message: 'Chefs and Administrators must maintain multi-factor authentication enabled for account security.'
+      }
+    });
+  }
+
+  await prisma.$transaction([
+    prisma.recoveryCode.deleteMany({ where: { userId: user.id } }),
+    prisma.user.update({
+      where: { id: user.id },
+      data: {
+        mfaSecret: null,
+        mfaEnabled: false,
+        mfaDrift: 0,
+        mfaFailedAttempts: 0,
+        mfaLockedUntil: null,
+        recoveryCodeAttempts: 0
+      }
+    })
+  ]);
+
+  return res.status(200).json({
+    ok: true,
+    message: 'Multi-factor authentication has been disabled for your account.'
+  });
+});
+
+// ==========================================
+// 6. LOGOUT
+// ==========================================
+router.post('/api/auth/logout', async (req, res) => {
+  res.clearCookie('auth_token');
+  return res.status(200).json({ ok: true, message: 'Logged out successfully.' });
+});
+
+// ==========================================
+// 7. FORGET PASSWORD (does NOT disable MFA!)
+// ==========================================
+router.post('/api/auth/forget', async (req, res) => {
   const { email } = req.body;
   const cleanEmail = (email || '').trim().toLowerCase();
 
@@ -617,15 +922,7 @@ const handleForget = async (req, res) => {
 
   try {
     if (!cleanEmail) {
-      if (isJsonRequest(req)) {
-        return res.status(400).json({ ok: false, error: { code: 'EMAIL_REQUIRED', message: 'Please enter your Gmail address.' } });
-      }
-      return res.status(400).render('auth/forget', {
-        title: 'Forget Password - B.H.T Diner',
-        error: 'email_required',
-        errorMessage: 'Please enter your Gmail address.',
-        msg: null
-      });
+      return res.status(400).json({ ok: false, error: { code: 'EMAIL_REQUIRED', message: 'Please enter your Gmail address.' } });
     }
 
     // Rate limit of 2 minutes
@@ -633,15 +930,9 @@ const handleForget = async (req, res) => {
     const now = Date.now();
     if (lastRequestTime && now - lastRequestTime < 2 * 60 * 1000) {
       const waitSeconds = Math.ceil((2 * 60 * 1000 - (now - lastRequestTime)) / 1000);
-      const rateLimitMsg = `Please wait ${waitSeconds} seconds before submitting another password reset request.`;
-      if (isJsonRequest(req)) {
-        return res.status(429).json({ ok: false, error: { code: 'RATE_LIMITED', message: rateLimitMsg } });
-      }
-      return res.status(429).render('auth/forget', {
-        title: 'Forget Password - B.H.T Diner',
-        error: 'rate_limited',
-        errorMessage: rateLimitMsg,
-        msg: null
+      return res.status(429).json({
+        ok: false,
+        error: { code: 'RATE_LIMITED', message: `Please wait ${waitSeconds} seconds before submitting another password reset request.` }
       });
     }
     forgetRateLimitMap.set(cleanEmail, now);
@@ -663,60 +954,29 @@ const handleForget = async (req, res) => {
         }
       });
 
-      // Target reset URL pointing to port 5173 if requested from frontend client, or host
       const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
       const resetUrl = `${clientOrigin}/reset?token=${encodeURIComponent(rawToken)}`;
 
       await sendPasswordResetEmail(cleanEmail, resetUrl);
     }
 
-    if (isJsonRequest(req)) {
-      return res.status(200).json({ ok: true, message: successMessage });
-    }
-
-    return res.render('auth/forget', {
-      title: 'Forget Password - B.H.T Diner',
-      error: null,
-      msg: 'reset_dispatched',
-      errorMessage: null,
-      infoNotice: successMessage
-    });
+    return res.status(200).json({ ok: true, message: successMessage });
   } catch (err) {
     console.error('Forget password error:', err.message);
-    if (isJsonRequest(req)) {
-      return res.status(200).json({ ok: true, message: successMessage });
-    }
-    return res.render('auth/forget', {
-      title: 'Forget Password - B.H.T Diner',
-      error: null,
-      msg: 'reset_dispatched',
-      errorMessage: null,
-      infoNotice: successMessage
-    });
+    return res.status(200).json({ ok: true, message: successMessage });
   }
-};
+});
 
-router.post('/forget', handleForget);
-router.post('/api/auth/forget', handleForget);
-
-
-
-// POST /reset and POST /api/auth/reset
-const handleReset = async (req, res) => {
+// ==========================================
+// 8. RESET PASSWORD (MFA remains intact!)
+// ==========================================
+router.post('/api/auth/reset', async (req, res) => {
   const { token, password, confirmPassword } = req.body;
 
   const renderResetError = (message) => {
-    if (isJsonRequest(req)) {
-      return res.status(400).json({
-        ok: false,
-        error: { code: 'VALIDATION_FAILED', message }
-      });
-    }
-    return res.status(400).render('auth/reset', {
-      title: 'Set New Password - B.H.T Diner',
-      token,
-      error: 'validation_failed',
-      errorMessage: message
+    return res.status(400).json({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message }
     });
   };
 
@@ -749,16 +1009,18 @@ const handleReset = async (req, res) => {
       return renderResetError('Passwords do not match. Please retype them carefully.');
     }
 
-    // Keep old password until process is complete!
     const newSalt = generate5DigitSalt();
     const newPasswordHash = await hashPassword(password, newSalt);
 
+    // Updates password, but PRESERVES MFA settings and recovery codes
     await prisma.$transaction([
       prisma.user.update({
         where: { id: challenge.userId },
         data: {
           passwordHash: newPasswordHash,
-          salt: newSalt
+          salt: newSalt,
+          failedLoginAttempts: 0,
+          lockoutUntil: null
         }
       }),
       prisma.passwordChallenge.update({
@@ -769,21 +1031,14 @@ const handleReset = async (req, res) => {
       })
     ]);
 
-    if (isJsonRequest(req)) {
-      return res.status(200).json({
-        ok: true,
-        message: 'Password updated successfully! Please sign in with your new password.'
-      });
-    }
-
-    return res.redirect('/login?msg=password_reset_success');
+    return res.status(200).json({
+      ok: true,
+      message: 'Password updated successfully! Please sign in with your new password.'
+    });
   } catch (err) {
     console.error('Reset POST error:', err.message);
     return renderResetError('An error occurred while resetting your password. Please try again.');
   }
-};
-
-router.post('/reset', handleReset);
-router.post('/api/auth/reset', handleReset);
+});
 
 module.exports = router;
