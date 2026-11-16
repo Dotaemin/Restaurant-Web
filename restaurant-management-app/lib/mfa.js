@@ -188,7 +188,104 @@ async function consumeTotpStep(prismaClient, userId, step) {
   return result.count === 1;
 }
 
+/**
+ * Step-up MFA check for sensitive admin actions (e.g. granting the ADMIN role).
+ * Accepts a current TOTP code or an unused recovery code belonging to the ACTING user.
+ * Same lockout as login: 3 wrong codes -> locked for 5 minutes.
+ * Returns { ok: true } or { ok: false, status, code, message }.
+ */
+async function verifyStepUpMfa(prismaClient, userId, rawCode) {
+  const code = typeof rawCode === 'string' ? rawCode.trim() : '';
+  if (!code) {
+    return {
+      ok: false,
+      status: 403,
+      code: 'MFA_REQUIRED',
+      message: 'Multi-factor authentication is required. Enter your authenticator code to confirm this change.'
+    };
+  }
+
+  const user = await prismaClient.user.findUnique({
+    where: { id: userId },
+    include: { recoveryCodes: true }
+  });
+
+  if (!user || !user.mfaEnabled || !user.mfaSecret) {
+    return {
+      ok: false,
+      status: 403,
+      code: 'MFA_NOT_ENABLED',
+      message: 'Enable multi-factor authentication on your own account before granting the Admin role.'
+    };
+  }
+
+  const now = new Date();
+  if (user.mfaLockedUntil && now < new Date(user.mfaLockedUntil)) {
+    const minutes = Math.max(1, Math.ceil((new Date(user.mfaLockedUntil).getTime() - now.getTime()) / 60000));
+    return {
+      ok: false,
+      status: 429,
+      code: 'MFA_LOCKED',
+      message: `Too many invalid codes. Please wait ${minutes} minute(s) before trying again.`
+    };
+  }
+
+  let verified = false;
+
+  if (code.includes('-')) {
+    // Recovery code (format A7B29F-4D31C8)
+    const record = await verifyRecoveryCode(code, user.recoveryCodes);
+    if (record) {
+      const marked = await prismaClient.recoveryCode.updateMany({
+        where: { id: record.id, usedAt: null },
+        data: { usedAt: new Date() }
+      });
+      verified = marked.count === 1;
+    }
+  } else {
+    // 6-digit TOTP code
+    const totp = createTotpFromUser(user);
+    const step = verifyTokenWithDrift(totp, code, user.mfaDrift || 0, user.mfaLastUsedStep);
+    verified = step !== null && (await consumeTotpStep(prismaClient, user.id, step));
+  }
+
+  if (!verified) {
+    const updated = await prismaClient.user.update({
+      where: { id: user.id },
+      data: { mfaFailedAttempts: { increment: 1 } },
+      select: { mfaFailedAttempts: true }
+    });
+
+    if (updated.mfaFailedAttempts >= 3) {
+      await prismaClient.user.update({
+        where: { id: user.id },
+        data: { mfaLockedUntil: new Date(Date.now() + 5 * 60 * 1000), mfaFailedAttempts: 0 }
+      });
+      return {
+        ok: false,
+        status: 429,
+        code: 'MFA_LOCKED',
+        message: 'Invalid code entered 3 times. Please wait 5 minutes before trying again.'
+      };
+    }
+
+    return {
+      ok: false,
+      status: 400,
+      code: 'INVALID_MFA_CODE',
+      message: `The verification code is incorrect. You have ${3 - updated.mfaFailedAttempts} attempt(s) remaining.`
+    };
+  }
+
+  await prismaClient.user.update({
+    where: { id: user.id },
+    data: { mfaFailedAttempts: 0, mfaLockedUntil: null }
+  });
+  return { ok: true };
+}
+
 module.exports = {
+  verifyStepUpMfa,
   encryptSecret,
   decryptSecret,
   generateMfaSecret,

@@ -3,6 +3,7 @@ const router = express.Router();
 const prisma = require('../../lib/prisma');
 const { requirePermission } = require('../../lib/authMiddleware');
 const { checkAdminUserPolicy } = require('../../lib/abac');
+const { verifyStepUpMfa } = require('../../lib/mfa');
 
 // GET /api/admin/users - List all users with chef profile
 router.get('/', requirePermission('user:read'), async (req, res, next) => {
@@ -113,7 +114,17 @@ router.patch('/:id', requirePermission('user:manage'), async (req, res, next) =>
         error: { code: abacResult.code || 'FORBIDDEN', message: abacResult.message }
       });
     }
-
+    // Granting the ADMIN role is a sensitive action: the acting admin must re-confirm with MFA
+    const isPromotionToAdmin = normalizedRole === 'ADMIN' && targetUser.role !== 'ADMIN';
+    if (isPromotionToAdmin) {
+      const mfaResult = await verifyStepUpMfa(prisma, req.user.id, req.body.mfaCode);
+      if (!mfaResult.ok) {
+        return res.status(mfaResult.status).json({
+          ok: false,
+          error: { code: mfaResult.code, message: mfaResult.message }
+        });
+      }
+    }
     const updateData = {};
     if (normalizedRole) updateData.role = normalizedRole;
     if (finalChefId !== targetUser.chefId) updateData.chefId = finalChefId;

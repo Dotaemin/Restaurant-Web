@@ -76,10 +76,10 @@ export default function AdminDishesPage() {
       };
 
       const [dishesRes, chefsRes, ingredientsRes, meRes] = await Promise.all([
-        api.getCurrentUser(),
         api.getAdminDishes(queryParams),
         api.getChefs({ pageSize: 100 }),
-        api.getIngredients({ pageSize: 100 })
+        api.getIngredients({ pageSize: 100 }),
+        api.getCurrentUser()
       ]);
 
       if (dishesRes.ok) {

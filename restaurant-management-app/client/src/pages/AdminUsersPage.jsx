@@ -36,6 +36,10 @@ export default function AdminUsersPage() {
 
   // Local draft changes: { [userId]: { role, chefId } }
   const [userDrafts, setUserDrafts] = useState({});
+  // Step-up MFA prompt shown when promoting a user to ADMIN: { user, payload } | null
+  const [mfaPrompt, setMfaPrompt] = useState(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [mfaError, setMfaError] = useState('');
 
   const loadData = async () => {
     setLoading(true);
@@ -89,28 +93,60 @@ export default function AdminUsersPage() {
     }));
   };
 
-  const handleSaveUser = async (user) => {
-    const draft = userDrafts[user.id];
-    if (!draft) return;
-
+    const saveUser = async (user, payload) => {
     setErrorBanner('');
     setSuccessBanner('');
     setSavingId(user.id);
+
+    const res = await api.updateAdminUser(user.id, payload);
+    setSavingId(null);
+
+    if (res?.ok) {
+      setMfaPrompt(null);
+      setSuccessBanner(res.message || `User "${user.username}" was updated successfully.`);
+      loadData();
+      return;
+    }
+
+    const code = res?.error?.code;
+    const isMfaError = ['MFA_REQUIRED', 'MFA_NOT_ENABLED', 'MFA_LOCKED', 'INVALID_MFA_CODE'].includes(code);
+    if (payload.mfaCode && isMfaError) {
+      // keep the dialog open so the admin can retry
+      setMfaError(res?.error?.message || 'Verification failed.');
+    } else {
+      setMfaPrompt(null);
+      setErrorBanner(res?.error?.message || 'Failed to update user.');
+    }
+  };
+
+  const handleSaveUser = async (user) => {
+    const draft = userDrafts[user.id];
+    if (!draft) return;
 
     const payload = {
       role: draft.role,
       chefId: draft.chefId ? parseInt(draft.chefId, 10) : null
     };
 
-    const res = await api.updateAdminUser(user.id, payload);
-    setSavingId(null);
-
-    if (res?.ok) {
-      setSuccessBanner(res.message || `User "${user.username}" was updated successfully.`);
-      loadData();
-    } else {
-      setErrorBanner(res?.error?.message || 'Failed to update user.');
+    // Granting the ADMIN role requires MFA confirmation from the acting admin
+    if (draft.role === 'ADMIN' && user.role !== 'ADMIN') {
+      setMfaCode('');
+      setMfaError('');
+      setMfaPrompt({ user, payload });
+      return;
     }
+
+    await saveUser(user, payload);
+  };
+
+  const handleConfirmMfa = async () => {
+    if (!mfaPrompt) return;
+    if (!mfaCode.trim()) {
+      setMfaError('Enter your 6-digit authenticator code or a recovery code.');
+      return;
+    }
+    setMfaError('');
+    await saveUser(mfaPrompt.user, { ...mfaPrompt.payload, mfaCode: mfaCode.trim() });
   };
 
   const getRoleBadge = (r) => {
@@ -284,6 +320,62 @@ export default function AdminUsersPage() {
           </table>
         </div>
       </div>
+            {/* Step-up MFA dialog (promoting a user to ADMIN) */}
+      {mfaPrompt && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setMfaPrompt(null);
+          }}
+        >
+          <div className="bg-white rounded-2xl border-2 border-[#ba1414] p-6 shadow-2xl max-w-sm w-full space-y-4">
+            <div className="flex items-center gap-2">
+              <Shield className="w-5 h-5 text-[#ba1414]" />
+              <h3 className="font-bold text-lg text-[#ba1414]">Confirm with MFA</h3>
+            </div>
+            <p className="text-xs text-slate-600">
+              You are granting the <span className="font-bold">ADMIN</span> role to{' '}
+              <span className="font-bold">{mfaPrompt.user.username}</span>. Enter the 6-digit code from your
+              authenticator app (or a recovery code) to continue.
+            </p>
+            <input
+              type="text"
+              value={mfaCode}
+              onChange={(e) => setMfaCode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleConfirmMfa();
+              }}
+              placeholder="123456 or A7B29F-4D31C8"
+              autoFocus
+              autoComplete="one-time-code"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#ba1414]"
+            />
+            {mfaError && (
+              <p className="text-xs font-bold text-rose-700 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{mfaError}</span>
+              </p>
+            )}
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setMfaPrompt(null)}
+                className="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmMfa}
+                disabled={savingId === mfaPrompt.user.id}
+                className="px-5 py-2 rounded-xl text-sm font-semibold text-white bg-[#ba1414] hover:bg-red-800 disabled:opacity-40 cursor-pointer"
+              >
+                {savingId === mfaPrompt.user.id ? 'Verifying...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
