@@ -40,9 +40,7 @@ router.get('/', requirePermission('user:read'), async (req, res, next) => {
 // PATCH /api/admin/users/:id - Update user role and/or chefId
 router.patch('/:id', requirePermission('user:manage'), async (req, res, next) => {
   try {
-    const rawId = req.params.id;
-    const targetUserId = parseInt(rawId, 10);
-
+    const targetUserId = parseInt(req.params.id, 10);
     if (isNaN(targetUserId) || targetUserId <= 0) {
       return res.status(400).json({
         ok: false,
@@ -54,7 +52,6 @@ router.patch('/:id', requirePermission('user:manage'), async (req, res, next) =>
       where: { id: targetUserId },
       include: { chef: true }
     });
-
     if (!targetUser) {
       return res.status(404).json({
         ok: false,
@@ -64,42 +61,62 @@ router.patch('/:id', requirePermission('user:manage'), async (req, res, next) =>
 
     const { role: newRole, chefId: newChefId } = req.body;
 
-    // Validate role if provided
-    if (newRole && !['VIEWER', 'CHEF', 'ADMIN'].includes(newRole.toUpperCase())) {
+    if (newRole && !['VIEWER', 'CHEF', 'ADMIN'].includes(String(newRole).toUpperCase())) {
       return res.status(400).json({
         ok: false,
         error: { code: 'VALIDATION_FAILED', message: 'Invalid role. Must be VIEWER, CHEF, or ADMIN.' }
       });
     }
+    const normalizedRole = newRole ? String(newRole).toUpperCase() : undefined;
 
-    const normalizedRole = newRole ? newRole.toUpperCase() : undefined;
+    // Work out what the account would look like after this update
+    const finalRole = normalizedRole || targetUser.role;
+    let finalChefId;
+    if (finalRole !== 'CHEF') {
+      finalChefId = null; // a chef link only makes sense for CHEF accounts
+    } else if (newChefId !== undefined) {
+      finalChefId = newChefId ? parseInt(newChefId, 10) : null;
+    } else {
+      finalChefId = targetUser.chefId;
+    }
 
-    // Run ABAC policy checks
+    // A CHEF must be linked to an existing chef profile
+    if (finalRole === 'CHEF') {
+      if (!finalChefId) {
+        return res.status(400).json({
+          ok: false,
+          error: { code: 'CHEF_PROFILE_REQUIRED', message: 'Please link a chef profile before assigning the Chef role.' }
+        });
+      }
+      const chefProfile = await prisma.chef.findUnique({ where: { id: finalChefId } });
+      if (!chefProfile) {
+        return res.status(400).json({
+          ok: false,
+          error: { code: 'VALIDATION_FAILED', message: 'The selected chef profile does not exist.' }
+        });
+      }
+    }
+
+    // ABAC policy checks (own role, last admin, chef profile already linked)
     const abacResult = await checkAdminUserPolicy(
       req.user,
       targetUser,
       {
         role: normalizedRole,
-        chefId: newChefId !== undefined ? (newChefId ? parseInt(newChefId, 10) : null) : undefined
+        chefId: finalChefId !== targetUser.chefId ? finalChefId : undefined
       },
       prisma
     );
-
     if (!abacResult.allowed) {
       return res.status(403).json({
         ok: false,
-        error: {
-          code: abacResult.code || 'FORBIDDEN',
-          message: abacResult.message
-        }
+        error: { code: abacResult.code || 'FORBIDDEN', message: abacResult.message }
       });
     }
 
     const updateData = {};
     if (normalizedRole) updateData.role = normalizedRole;
-    if (newChefId !== undefined) {
-      updateData.chefId = newChefId ? parseInt(newChefId, 10) : null;
-    }
+    if (finalChefId !== targetUser.chefId) updateData.chefId = finalChefId;
 
     const updatedUser = await prisma.user.update({
       where: { id: targetUserId },
@@ -111,13 +128,7 @@ router.patch('/:id', requirePermission('user:manage'), async (req, res, next) =>
         role: true,
         status: true,
         chefId: true,
-        chef: {
-          select: {
-            id: true,
-            name: true,
-            specialty: true
-          }
-        },
+        chef: { select: { id: true, name: true, specialty: true } },
         mfaEnabled: true,
         updatedAt: true
       }
@@ -165,6 +176,7 @@ router.post('/:id/mfa-reset', requirePermission('user:manage'), async (req, res,
           mfaSecret: null,
           mfaEnabled: false,
           mfaDrift: 0,
+          mfaLastUsedStep: null,
           mfaFailedAttempts: 0,
           mfaLockedUntil: null,
           recoveryCodeAttempts: 0,

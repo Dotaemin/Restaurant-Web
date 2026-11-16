@@ -23,6 +23,9 @@ const {
 const {
   generateMfaSecret,
   createTotpInstance,
+  createTotpFromUser,
+  encryptSecret,
+  consumeTotpStep,
   generateQrCodeDataUrl,
   generateRecoveryCodes,
   hashRecoveryCodes,
@@ -270,7 +273,7 @@ const handleActivation = async (req, res) => {
     // If user is CHEF or ADMIN and MFA is configured, calculate clock drift if mfaCode was supplied
     let detectedDrift = 0;
     if (user.mfaSecret && mfaCode) {
-      const totp = createTotpInstance(user.mfaSecret, user.email);
+      const totp = createTotpFromUser(user);
       const initResult = verifyInitialToken(totp, mfaCode);
       if (initResult.valid) {
         detectedDrift = initResult.driftSeconds;
@@ -724,10 +727,12 @@ router.post('/api/auth/mfa/verify', async (req, res) => {
     });
   }
 
-  const totp = createTotpInstance(user.mfaSecret, user.email);
-  const isValidTotp = verifyTokenWithDrift(totp, cleanCode, user.mfaDrift || 0);
+  const totp = createTotpFromUser(user);
+  const matchedStep = verifyTokenWithDrift(totp, cleanCode, user.mfaDrift || 0, user.mfaLastUsedStep);
+  // Atomically mark this 30s step as used; a parallel request with the same code loses the race.
+  const isValidTotp = matchedStep !== null && await consumeTotpStep(prisma, user.id, matchedStep);
 
-  if (!isValidTotp) {
+if (!isValidTotp) {
     const updatedUser = await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -826,6 +831,16 @@ router.post('/api/auth/mfa/setup-pending', async (req, res) => {
     });
   }
 
+  if (user.mfaEnabled) {
+    return res.status(409).json({
+      ok: false,
+      error: {
+        code: 'MFA_ALREADY_ENABLED',
+        message: 'Multi-factor authentication is already set up for this account. Please sign in normally.'
+      }
+    });
+  }
+
   const now = new Date();
   if (user.mfaLockedUntil && now < new Date(user.mfaLockedUntil)) {
     const remainingMinutes = Math.max(1, Math.ceil((new Date(user.mfaLockedUntil).getTime() - now.getTime()) / 60000));
@@ -875,6 +890,16 @@ router.post('/api/auth/mfa/confirm-pending', async (req, res) => {
     return res.status(401).json({
       ok: false,
       error: { code: 'UNAUTHENTICATED', message: 'User not found. Please sign in again.' }
+    });
+  }
+
+  if (user.mfaEnabled) {
+    return res.status(409).json({
+      ok: false,
+      error: {
+        code: 'MFA_ALREADY_ENABLED',
+        message: 'Multi-factor authentication is already set up for this account. Please sign in normally.'
+      }
     });
   }
 
@@ -946,9 +971,10 @@ router.post('/api/auth/mfa/confirm-pending', async (req, res) => {
     prisma.user.update({
       where: { id: user.id },
       data: {
-        mfaSecret: secret,
+        mfaSecret: encryptSecret(secret),
         mfaEnabled: true,
         mfaDrift: initResult.driftSeconds,
+        mfaLastUsedStep: initResult.step,
         mfaFailedAttempts: 0,
         recoveryCodeAttempts: 0,
         mfaLockedUntil: null
@@ -1051,9 +1077,10 @@ router.post('/api/auth/mfa/confirm', requireAuth, async (req, res) => {
     prisma.user.update({
       where: { id: user.id },
       data: {
-        mfaSecret: secret,
+        mfaSecret: encryptSecret(secret),
         mfaEnabled: true,
         mfaDrift: initResult.driftSeconds,
+        mfaLastUsedStep: initResult.step,
         mfaFailedAttempts: 0,
         mfaLockedUntil: null
       }
@@ -1122,8 +1149,9 @@ router.post('/api/auth/mfa/disable', requireAuth, async (req, res) => {
   }
 
   if (!codeVerified && user.mfaSecret) {
-    const totp = createTotpInstance(user.mfaSecret, user.email);
-    if (verifyTokenWithDrift(totp, cleanCode, user.mfaDrift || 0)) {
+    const totp = createTotpFromUser(user);
+    const matchedStep = verifyTokenWithDrift(totp, cleanCode, user.mfaDrift || 0, user.mfaLastUsedStep);
+    if (matchedStep !== null && await consumeTotpStep(prisma, user.id, matchedStep)) {
       codeVerified = true;
     }
   }
@@ -1141,6 +1169,7 @@ router.post('/api/auth/mfa/disable', requireAuth, async (req, res) => {
       where: { id: user.id },
       data: {
         mfaSecret: null,
+        mfaLastUsedStep: null,
         mfaEnabled: false,
         mfaDrift: 0,
         mfaFailedAttempts: 0,

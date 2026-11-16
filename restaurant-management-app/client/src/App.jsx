@@ -40,23 +40,22 @@ export default function App() {
           <Route path="/dishes/infinite-scroll" element={<DishesPage paginationMode="infinite-scroll" />} />
           <Route path="/dishes/:id" element={<DishDetailPage />} />
 
-          {/* Protected Admin Routes */}
-          <Route element={<ProtectedRoute />}>
-            {/* Admin Dishes Routes */}
+          {/* Chef + Admin: management views */}
+          <Route element={<ProtectedRoute roles={['CHEF', 'ADMIN']} />}>
             <Route path="/admin/dishes" element={<AdminDishesPage />} />
             <Route path="/admin/dishes/new" element={<AdminDishesPage />} />
             <Route path="/admin/dishes/:id/edit" element={<AdminDishEditPage />} />
             <Route path="/admin/dish" element={<Navigate to="/admin/dishes" replace />} />
 
-            {/* Admin Chefs Routes */}
             <Route path="/admin/chefs" element={<AdminChefsPage />} />
             <Route path="/admin/chef" element={<Navigate to="/admin/chefs" replace />} />
 
-            {/* Admin Ingredients Routes */}
             <Route path="/admin/ingredients" element={<AdminIngredientsPage />} />
             <Route path="/admin/ingredient" element={<Navigate to="/admin/ingredients" replace />} />
+          </Route>
 
-            {/* Admin Users Management Route */}
+          {/* Admin only: role assignment */}
+          <Route element={<ProtectedRoute roles={['ADMIN']} />}>
             <Route path="/admin/users" element={<AdminUsersPage />} />
           </Route>
 

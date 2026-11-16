@@ -6,6 +6,12 @@ const fs = require('fs');
 const path = require('path');
 
 const prisma = new PrismaClient();
+
+// Clears the replay marker so the same 30-second code can be submitted again in a test
+async function resetTotpReplay(email) {
+  await prisma.user.update({ where: { email }, data: { mfaLastUsedStep: null } });
+}
+
 const PORT = 3098;
 let server;
 
@@ -177,6 +183,7 @@ async function runTests() {
     assert(resReuseRecovery.status === 400, 'Used recovery code is disabled and cannot be reused');
 
     // Test valid TOTP using otpauth:9.6.0
+    await resetTotpReplay('chef@gmail.com');
     const chefTotp = new OTPAuth.TOTP({
       issuer: 'BHT Diner',
       label: 'chef@gmail.com',
@@ -318,6 +325,7 @@ async function runTests() {
     assert(resAdminLogin.status === 200, 'Admin login phase 1 returns 200');
     const adminLoginData = await resAdminLogin.json();
 
+    await resetTotpReplay('admin@gmail.com');
     const adminTotp = new OTPAuth.TOTP({
       issuer: 'BHT Diner',
       label: 'admin@gmail.com',
@@ -405,6 +413,8 @@ async function runTests() {
       body: JSON.stringify({ identifier: 'viewer@gmail.com', password: 'Viewer123!' })
     });
     const viewerLoginMfaData = await resViewerLoginMfa.json();
+
+    await resetTotpReplay('viewer@gmail.com');
     assert(viewerLoginMfaData.mfaRequired === true, 'Viewer now requires MFA upon login');
 
     // Viewer disables MFA

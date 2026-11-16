@@ -3,35 +3,19 @@ import { Navigate, Outlet } from 'react-router-dom';
 import api from '../api/client';
 import { Loader2 } from 'lucide-react';
 
-export default function ProtectedRoute() {
-  const [authState, setAuthState] = useState({
-    loading: true,
-    user: null,
-  });
+// roles (optional): e.g. ['CHEF', 'ADMIN']. If omitted, any signed-in active user may enter.
+export default function ProtectedRoute({ roles }) {
+  const [authState, setAuthState] = useState({ loading: true, user: null });
 
   useEffect(() => {
     let isMounted = true;
 
     api.getCurrentUser().then((res) => {
       if (!isMounted) return;
-
-      if (res?.ok && res.user) {
-        setAuthState({
-          loading: false,
-          user: res.user,
-        });
-      } else {
-        setAuthState({
-          loading: false,
-          user: null,
-        });
-      }
+      setAuthState({ loading: false, user: res?.ok && res.user ? res.user : null });
     }).catch(() => {
       if (!isMounted) return;
-      setAuthState({
-        loading: false,
-        user: null,
-      });
+      setAuthState({ loading: false, user: null });
     });
 
     return () => {
@@ -48,13 +32,19 @@ export default function ProtectedRoute() {
     );
   }
 
-  if (!authState.user) {
+  const { user } = authState;
+
+  if (!user) {
     return <Navigate to="/login" replace />;
   }
 
-  if (authState.user.status === 'pending') {
+  if (String(user.status).toUpperCase() === 'PENDING') {
     return <Navigate to="/activation?msg=activation_required" replace />;
   }
 
-  return <Outlet />;
+  if (roles && !roles.includes(String(user.role).toUpperCase())) {
+    return <Navigate to="/dishes" replace />;
+  }
+
+  return <Outlet context={{ user }} />;
 }

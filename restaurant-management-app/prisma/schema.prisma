@@ -74,6 +74,7 @@ model User {
   mfaSecret           String?
   mfaEnabled          Boolean              @default(false)
   mfaDrift            Int                  @default(0)
+  mfaLastUsedStep     Int?
   mfaFailedAttempts   Int                  @default(0)
   mfaLockedUntil      DateTime?
   recoveryCodeAttempts Int                 @default(0)

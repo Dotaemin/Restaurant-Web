@@ -2,7 +2,7 @@ require('dotenv').config();
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { generate5DigitSalt, hashPassword } = require('../lib/security');
-const { hashRecoveryCodes } = require('../lib/mfa');
+const { hashRecoveryCodes, encryptSecret } = require('../lib/mfa');
 
 async function main() {
   console.log('Seeding restaurant database...');
@@ -210,7 +210,8 @@ async function main() {
     update: {
       role: 'ADMIN',
       status: 'ACTIVE',
-      mfaSecret: 'JBSWY3DPEHPK3PXP',
+      mfaSecret: encryptSecret('JBSWY3DPEHPK3PXP'),
+      mfaLastUsedStep: null,
       mfaEnabled: true,
       mfaDrift: 0
     },
@@ -222,7 +223,8 @@ async function main() {
       role: 'ADMIN',
       status: 'ACTIVE',
       chefId: null,
-      mfaSecret: 'JBSWY3DPEHPK3PXP',
+      mfaSecret: encryptSecret('JBSWY3DPEHPK3PXP'),
+      mfaLastUsedStep: null,
       mfaEnabled: true,
       mfaDrift: 0,
       emailVerifiedAt: new Date()
@@ -243,7 +245,8 @@ async function main() {
       role: 'CHEF',
       status: 'ACTIVE',
       chefId: chefMarco.id,
-      mfaSecret: 'JBSWY3DPEHPK3PXP',
+      mfaSecret: encryptSecret('JBSWY3DPEHPK3PXP'),
+      mfaLastUsedStep: null,
       mfaEnabled: true,
       mfaDrift: 0
     },
@@ -255,7 +258,8 @@ async function main() {
       role: 'CHEF',
       status: 'ACTIVE',
       chefId: chefMarco.id,
-      mfaSecret: 'JBSWY3DPEHPK3PXP',
+      mfaSecret: encryptSecret('JBSWY3DPEHPK3PXP'),
+      mfaLastUsedStep: null,
       mfaEnabled: true,
       mfaDrift: 0,
       emailVerifiedAt: new Date()
