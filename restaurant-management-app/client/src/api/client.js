@@ -213,11 +213,32 @@ class RestaurantApiClient {
   }
 
   /**
+    * POST /api/auth/mfa/setup-pending
+    */
+  setupMfaPending(data) {
+    return this.request('/auth/mfa/setup-pending', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  /**
+    * POST /api/auth/mfa/confirm-pending
+    */
+  confirmMfaPending(data) {
+    return this.request('/auth/mfa/confirm-pending', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
+
+  /**
    * POST /api/auth/mfa/disable
    */
-  disableMfa() {
+  disableMfa(data) {
     return this.request('/auth/mfa/disable', {
-      method: 'POST'
+      method: 'POST',
+      body: data ? JSON.stringify(data) : undefined
     });
   }
 
@@ -444,6 +465,12 @@ class RestaurantApiClient {
         ...data,
         _method: 'PATCH'
       })
+    });
+  }
+
+  resetAdminUserMfa(id) {
+    return this.request(`/admin/users/${id}/mfa-reset`, {
+      method: 'POST'
     });
   }
 }

@@ -1,12 +1,35 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/client';
-import { Users, Shield, ChefHat, CheckCircle2, AlertCircle, Loader2, Save } from 'lucide-react';
+import { Users, Shield, CheckCircle2, AlertCircle, Loader2, Save, RotateCcw } from 'lucide-react';
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState([]);
   const [chefs, setChefs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
+  const [resettingId, setResettingId] = useState(null);
+
+  const handleResetMfa = async (user) => {
+    if (!window.confirm(`Are you sure you want to reset MFA for user "${user.username}"? They will be required to configure it again upon next login.`)) {
+      return;
+    }
+
+    setResettingId(user.id);
+    setErrorBanner('');
+    setSuccessBanner('');
+
+    const res = await api.resetAdminUserMfa(user.id);
+    setResettingId(null);
+
+    if (res?.ok) {
+      setSuccessBanner(`MFA successfully reset for ${user.username}.`);
+      setUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, mfaEnabled: false } : u))
+      );
+    } else {
+      setErrorBanner(res?.error?.message || `Failed to reset MFA for ${user.username}.`);
+    }
+  };
   const [errorBanner, setErrorBanner] = useState('');
   const [successBanner, setSuccessBanner] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
@@ -219,6 +242,23 @@ export default function AdminUsersPage() {
                     </td>
 
                     <td className="py-3 px-4 text-right">
+                      {user.mfaEnabled && (
+                        <button
+                          type="button"
+                          onClick={() => handleResetMfa(user)}
+                          disabled={resettingId === user.id}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-2xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all cursor-pointer mr-2 disabled:opacity-50"
+                          title="Reset MFA configuration & recovery codes"
+                        >
+                          {resettingId === user.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <RotateCcw className="w-3 h-3" />
+                          )}
+                          <span>Reset MFA</span>
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => handleSaveUser(user)}

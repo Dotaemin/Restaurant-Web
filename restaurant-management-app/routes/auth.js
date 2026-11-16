@@ -14,7 +14,9 @@ const {
   verifyRecaptcha,
   signSessionJwt,
   signMfaPendingJwt,
+  signMfaSetupJwt,
   verifyMfaPendingJwt,
+  verifyMfaSetupJwt,
   verifySessionJwt,
   generateCsrfToken
 } = require('../lib/security');
@@ -508,9 +510,32 @@ const handleLogin = async (req, res) => {
     // MFA ENFORCEMENT CHECK
     // Mandatory for CHEF & ADMIN, or if user enabled MFA
     // ========================================================
-    const requiresMfa = user.mfaEnabled || user.role === 'CHEF' || user.role === 'ADMIN';
+    const isChefOrAdmin = user.role === 'CHEF' || user.role === 'ADMIN';
 
-    if (requiresMfa) {
+    // 1. If CHEF/ADMIN has mfaEnabled === false, require setup
+    if (isChefOrAdmin && !user.mfaEnabled) {
+      if (user.mfaLockedUntil && now < new Date(user.mfaLockedUntil)) {
+        const remainingMinutes = Math.max(1, Math.ceil((new Date(user.mfaLockedUntil).getTime() - now.getTime()) / 60000));
+        return res.status(429).json({
+          ok: false,
+          error: {
+            code: 'MFA_LOCKED',
+            message: `Too many unsuccessful verification attempts. Please wait ${remainingMinutes} minute(s) before trying again.`
+          }
+        });
+      }
+
+      const mfaToken = await signMfaSetupJwt(user);
+      return res.status(200).json({
+        ok: true,
+        mfaSetupRequired: true,
+        mfaToken,
+        message: 'Two-factor authentication setup is required for this account.'
+      });
+    }
+
+    // 2. If MFA is enabled, require code verification
+    if (user.mfaEnabled) {
       // Check if MFA is temporarily locked out
       if (user.mfaLockedUntil && now < new Date(user.mfaLockedUntil)) {
         const remainingMinutes = Math.max(1, Math.ceil((new Date(user.mfaLockedUntil).getTime() - now.getTime()) / 60000));
@@ -772,6 +797,190 @@ router.post('/api/auth/mfa/verify', async (req, res) => {
 });
 
 // ==========================================
+// 4b. PENDING MFA SETUP (For newly upgraded/logged-in Chef or Admin)
+// ==========================================
+
+// POST /api/auth/mfa/setup-pending - Generate QR code and secret using temporary mfa_setup token
+router.post('/api/auth/mfa/setup-pending', async (req, res) => {
+  const { mfaToken } = req.body;
+  if (!mfaToken) {
+    return res.status(401).json({
+      ok: false,
+      error: { code: 'UNAUTHENTICATED', message: 'Missing setup token. Please sign in again.' }
+    });
+  }
+
+  const payload = await verifyMfaSetupJwt(mfaToken);
+  if (!payload || !payload.userId) {
+    return res.status(401).json({
+      ok: false,
+      error: { code: 'SESSION_EXPIRED', message: 'Your setup session has expired. Please sign in again.' }
+    });
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: payload.userId } });
+  if (!user) {
+    return res.status(401).json({
+      ok: false,
+      error: { code: 'UNAUTHENTICATED', message: 'User not found. Please sign in again.' }
+    });
+  }
+
+  const now = new Date();
+  if (user.mfaLockedUntil && now < new Date(user.mfaLockedUntil)) {
+    const remainingMinutes = Math.max(1, Math.ceil((new Date(user.mfaLockedUntil).getTime() - now.getTime()) / 60000));
+    return res.status(429).json({
+      ok: false,
+      error: {
+        code: 'MFA_LOCKED',
+        message: `Too many unsuccessful verification attempts. Please wait ${remainingMinutes} minute(s) before trying again.`
+      }
+    });
+  }
+
+  const secret = generateMfaSecret();
+  const totp = createTotpInstance(secret, user.email);
+  const qrCodeDataUrl = await generateQrCodeDataUrl(totp);
+
+  return res.status(200).json({
+    ok: true,
+    secret,
+    qrCode: qrCodeDataUrl
+  });
+});
+
+// POST /api/auth/mfa/confirm-pending - Confirm setup, issue 10 recovery codes and session cookie
+router.post('/api/auth/mfa/confirm-pending', async (req, res) => {
+  const { mfaToken, secret, code } = req.body;
+  if (!mfaToken || !secret || !code) {
+    return res.status(400).json({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message: 'mfaToken, secret, and verification code are required.' }
+    });
+  }
+
+  const payload = await verifyMfaSetupJwt(mfaToken);
+  if (!payload || !payload.userId) {
+    return res.status(401).json({
+      ok: false,
+      error: { code: 'SESSION_EXPIRED', message: 'Your setup session has expired. Please sign in again.' }
+    });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: payload.userId },
+    include: { chef: true }
+  });
+  if (!user) {
+    return res.status(401).json({
+      ok: false,
+      error: { code: 'UNAUTHENTICATED', message: 'User not found. Please sign in again.' }
+    });
+  }
+
+  const now = new Date();
+  if (user.mfaLockedUntil && now < new Date(user.mfaLockedUntil)) {
+    const remainingMinutes = Math.max(1, Math.ceil((new Date(user.mfaLockedUntil).getTime() - now.getTime()) / 60000));
+    return res.status(429).json({
+      ok: false,
+      error: {
+        code: 'MFA_LOCKED',
+        message: `Too many unsuccessful verification attempts. Please wait ${remainingMinutes} minute(s) before trying again.`
+      }
+    });
+  }
+
+  const cleanCode = (code || '').trim();
+  const totp = createTotpInstance(secret, user.email);
+  const initResult = verifyInitialToken(totp, cleanCode);
+
+  if (!initResult.valid) {
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        mfaFailedAttempts: { increment: 1 }
+      },
+      select: {
+        mfaFailedAttempts: true
+      }
+    });
+
+    const attempts = updatedUser.mfaFailedAttempts;
+
+    if (attempts >= 3) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          mfaLockedUntil: new Date(Date.now() + 5 * 60 * 1000),
+          mfaFailedAttempts: 0
+        }
+      });
+
+      return res.status(429).json({
+        ok: false,
+        error: {
+          code: 'MFA_LOCKED',
+          message: 'You have entered an invalid verification code 3 times. Please wait 5 minutes before trying again.'
+        }
+      });
+    }
+
+    return res.status(400).json({
+      ok: false,
+      error: {
+        code: 'INVALID_CODE',
+        message: `The verification code entered does not match. You have ${3 - attempts} attempt(s) remaining.`
+      }
+    });
+  }
+
+  // Code is valid: generate 10 recovery codes
+  const plainCodes = generateRecoveryCodes(10);
+  const hashedCodes = await hashRecoveryCodes(plainCodes);
+
+  await prisma.$transaction([
+    prisma.recoveryCode.deleteMany({ where: { userId: user.id } }),
+    prisma.recoveryCode.createMany({
+      data: hashedCodes.map(codeHash => ({ userId: user.id, codeHash }))
+    }),
+    prisma.user.update({
+      where: { id: user.id },
+      data: {
+        mfaSecret: secret,
+        mfaEnabled: true,
+        mfaDrift: initResult.driftSeconds,
+        mfaFailedAttempts: 0,
+        recoveryCodeAttempts: 0,
+        mfaLockedUntil: null
+      }
+    })
+  ]);
+
+  const activeUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    include: { chef: true }
+  });
+
+  const jwtToken = await signSessionJwt(activeUser);
+  const claims = await verifySessionJwt(jwtToken);
+
+  res.cookie('auth_token', jwtToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 15 * 60 * 1000
+  });
+
+  return res.status(200).json({
+    ok: true,
+    user: sanitizeUser(activeUser),
+    csrfToken: generateCsrfToken(claims),
+    recoveryCodes: plainCodes,
+    message: 'Multi-factor authentication successfully enabled. Please store your recovery codes securely.'
+  });
+});
+
+// ==========================================
 // 5. VIEWER MFA TOGGLE (Turn On / Off)
 // ==========================================
 
@@ -806,6 +1015,17 @@ router.post('/api/auth/mfa/confirm', requireAuth, async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.user.id } });
   if (!user) {
     return res.status(401).json({ ok: false, error: { code: 'UNAUTHENTICATED', message: 'Please sign in.' } });
+  }
+
+  // 409 if MFA is already enabled
+  if (user.mfaEnabled) {
+    return res.status(409).json({
+      ok: false,
+      error: {
+        code: 'MFA_ALREADY_ENABLED',
+        message: 'Multi-factor authentication is already enabled for this account.'
+      }
+    });
   }
 
   const totp = createTotpInstance(secret, user.email);
@@ -847,9 +1067,21 @@ router.post('/api/auth/mfa/confirm', requireAuth, async (req, res) => {
   });
 });
 
-// POST /api/auth/mfa/disable - Disable MFA for logged in VIEWER
+// POST /api/auth/mfa/disable - Disable MFA for logged in VIEWER (requires password + TOTP or recovery code)
 router.post('/api/auth/mfa/disable', requireAuth, async (req, res) => {
-  const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+  const { password, code, isRecoveryCode } = req.body;
+  if (!password || !code) {
+    return res.status(400).json({
+      ok: false,
+      error: { code: 'VALIDATION_FAILED', message: 'Password and a verification code or recovery code are required to disable multi-factor authentication.' }
+    });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: req.user.id },
+    include: { recoveryCodes: true }
+  });
+
   if (!user) {
     return res.status(401).json({ ok: false, error: { code: 'UNAUTHENTICATED', message: 'Please sign in.' } });
   }
@@ -862,6 +1094,44 @@ router.post('/api/auth/mfa/disable', requireAuth, async (req, res) => {
         code: 'FORBIDDEN',
         message: 'Chefs and Administrators must maintain multi-factor authentication enabled for account security.'
       }
+    });
+  }
+
+  // 1. Verify password
+  const isPasswordValid = await verifyPassword(password, user.salt, user.passwordHash);
+  if (!isPasswordValid) {
+    return res.status(400).json({
+      ok: false,
+      error: { code: 'INVALID_PASSWORD', message: 'The password entered is incorrect.' }
+    });
+  }
+
+  // 2. Verify TOTP or recovery code
+  const cleanCode = (code || '').trim();
+  let codeVerified = false;
+
+  if (isRecoveryCode || cleanCode.includes('-')) {
+    const matchingRecord = await verifyRecoveryCode(cleanCode, user.recoveryCodes);
+    if (matchingRecord) {
+      codeVerified = true;
+      await prisma.recoveryCode.update({
+        where: { id: matchingRecord.id },
+        data: { usedAt: new Date() }
+      });
+    }
+  }
+
+  if (!codeVerified && user.mfaSecret) {
+    const totp = createTotpInstance(user.mfaSecret, user.email);
+    if (verifyTokenWithDrift(totp, cleanCode, user.mfaDrift || 0)) {
+      codeVerified = true;
+    }
+  }
+
+  if (!codeVerified) {
+    return res.status(400).json({
+      ok: false,
+      error: { code: 'INVALID_CODE', message: 'The verification code or recovery code entered is incorrect.' }
     });
   }
 

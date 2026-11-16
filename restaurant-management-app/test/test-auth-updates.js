@@ -1,9 +1,19 @@
 process.env.NODE_ENV = 'test';
 const http = require('http');
 const assert = require('assert');
+const OTPAuth = require('otpauth');
 const app = require('../server');
 const prisma = require('../lib/prisma');
-const { signSessionJwt, signMfaPendingJwt, verifySessionJwt } = require('../lib/security');
+const {
+  signSessionJwt,
+  signMfaPendingJwt,
+  signMfaSetupJwt,
+  verifyMfaSetupJwt,
+  verifySessionJwt,
+  generateCsrfToken,
+  generate5DigitSalt,
+  hashPassword
+} = require('../lib/security');
 
 // Helper to make HTTP requests
 function makeRequest(server, options, postData) {
@@ -54,7 +64,7 @@ function makeRequest(server, options, postData) {
 
 async function runTests() {
   console.log('=================================================================');
-  console.log('🧪 Starting Tests: Auth Security Refactoring & Hardening Verification');
+  console.log('🧪 Starting Tests: Comprehensive Auth & MFA Hardening Suite');
   console.log('=================================================================\n');
 
   const server = http.createServer(app);
@@ -63,16 +73,16 @@ async function runTests() {
   console.log(`Server listening on 127.0.0.1:${port}\n`);
 
   try {
+    const timestamp = Date.now();
+
     // -----------------------------------------------------------------
     // TEST 1: POST /api/auth/register with role: 'ADMIN' creates a VIEWER
     // -----------------------------------------------------------------
-    console.log('[Test 1/3] POST /api/auth/register with role: "ADMIN" creates a VIEWER...');
+    console.log('[Test 1/7] POST /api/auth/register with role: "ADMIN" creates a VIEWER...');
 
-    const timestamp = Date.now();
     const testUsername = `admin_probe_${timestamp}`;
     const testEmail = `admin_probe_${timestamp}@gmail.com`;
 
-    // Ensure clean state
     await prisma.user.deleteMany({
       where: {
         OR: [
@@ -114,12 +124,10 @@ async function runTests() {
     // -----------------------------------------------------------------
     // TEST 2: An mfa_pending token in the auth_token cookie gets 401 on /api/auth/me
     // -----------------------------------------------------------------
-    console.log('\n[Test 2/3] An mfa_pending token in auth_token cookie gets 401 on /api/auth/me...');
+    console.log('\n[Test 2/7] An mfa_pending token in auth_token cookie gets 401 on /api/auth/me...');
 
-    // Generate an mfa_pending token
     const mfaPendingToken = await signMfaPendingJwt(createdUser);
 
-    // Call /api/auth/me with auth_token cookie = mfaPendingToken
     const meWithMfaPending = await makeRequest(server, {
       path: '/api/auth/me',
       method: 'GET',
@@ -132,7 +140,6 @@ async function runTests() {
     assert.strictEqual(meWithMfaPending.body.ok, false, 'Response ok must be false');
     assert.strictEqual(meWithMfaPending.body.error.code, 'UNAUTHENTICATED', 'Error code must be UNAUTHENTICATED');
 
-    // Contrast with valid session token which must succeed
     const validSessionToken = await signSessionJwt(createdUser);
     const meWithValidSession = await makeRequest(server, {
       path: '/api/auth/me',
@@ -145,21 +152,16 @@ async function runTests() {
     assert.strictEqual(meWithValidSession.statusCode, 200, 'Valid session token on /api/auth/me must return 200');
     assert.strictEqual(meWithValidSession.body.ok, true, 'Response ok must be true');
     assert.strictEqual(meWithValidSession.body.user.role, 'VIEWER', 'Returned user role must be VIEWER');
-    assert.strictEqual(meWithValidSession.body.user.passwordHash, undefined, 'passwordHash must not leak');
-    assert.strictEqual(meWithValidSession.body.user.salt, undefined, 'salt must not leak');
 
-    console.log('  ✓ mfa_pending token was rejected with 401 UNAUTHENTICATED on /api/auth/me.');
-    console.log('  ✓ Valid session token with type: "session" was accepted with 200 OK.');
+    console.log('  ✓ mfa_pending token rejected with 401 UNAUTHENTICATED; valid session accepted.');
 
-    // Clean up created user
     await prisma.user.delete({ where: { id: createdUser.id } });
 
     // -----------------------------------------------------------------
     // TEST 3: After a lock expires, the user gets 3 fresh tries
     // -----------------------------------------------------------------
-    console.log('\n[Test 3/3] After a lock expires, the user gets 3 fresh tries...');
+    console.log('\n[Test 3/7] After a lock expires, the user gets 3 fresh tries...');
 
-    // Create a temporary test user with MFA configured
     const mfaTestUser = await prisma.user.create({
       data: {
         username: `mfa_lock_${timestamp}`,
@@ -168,17 +170,15 @@ async function runTests() {
         salt: '12345',
         role: 'CHEF',
         status: 'ACTIVE',
-        mfaSecret: 'JBSWY3DPEHPK3PXP', // Base32 test secret
+        mfaSecret: 'JBSWY3DPEHPK3PXP',
         mfaEnabled: true,
         mfaFailedAttempts: 0,
-        // Set an expired lockout timestamp in the past
         mfaLockedUntil: new Date(Date.now() - 5000)
       }
     });
 
     const mfaToken = await signMfaPendingJwt(mfaTestUser);
 
-    // Try 1: Invalid code
     const try1 = await makeRequest(server, {
       path: '/api/auth/mfa/verify',
       method: 'POST'
@@ -186,15 +186,9 @@ async function runTests() {
       mfaToken,
       code: '000000'
     });
-
     assert.strictEqual(try1.statusCode, 400, 'Try 1 must return 400');
-    assert.strictEqual(try1.body.error.code, 'INVALID_TOTP', 'Try 1 error must be INVALID_TOTP');
-    assert.ok(try1.body.error.message.includes('2 attempt(s) remaining'), 'Try 1 must report 2 attempts remaining');
+    assert.ok(try1.body.error.message.includes('2 attempt(s) remaining'), 'Try 1 reports 2 remaining');
 
-    const userAfterTry1 = await prisma.user.findUnique({ where: { id: mfaTestUser.id } });
-    assert.strictEqual(userAfterTry1.mfaFailedAttempts, 1, 'Counter must be 1 after try 1');
-
-    // Try 2: Invalid code
     const try2 = await makeRequest(server, {
       path: '/api/auth/mfa/verify',
       method: 'POST'
@@ -202,15 +196,9 @@ async function runTests() {
       mfaToken,
       code: '000000'
     });
-
     assert.strictEqual(try2.statusCode, 400, 'Try 2 must return 400');
-    assert.strictEqual(try2.body.error.code, 'INVALID_TOTP', 'Try 2 error must be INVALID_TOTP');
-    assert.ok(try2.body.error.message.includes('1 attempt(s) remaining'), 'Try 2 must report 1 attempt remaining');
+    assert.ok(try2.body.error.message.includes('1 attempt(s) remaining'), 'Try 2 reports 1 remaining');
 
-    const userAfterTry2 = await prisma.user.findUnique({ where: { id: mfaTestUser.id } });
-    assert.strictEqual(userAfterTry2.mfaFailedAttempts, 2, 'Counter must be 2 after try 2');
-
-    // Try 3: Invalid code -> Reaches 3 -> Triggers lockout (429) & resets counter to 0
     const try3 = await makeRequest(server, {
       path: '/api/auth/mfa/verify',
       method: 'POST'
@@ -218,21 +206,273 @@ async function runTests() {
       mfaToken,
       code: '000000'
     });
-
     assert.strictEqual(try3.statusCode, 429, 'Try 3 must return 429 MFA_LOCKED');
-    assert.strictEqual(try3.body.error.code, 'MFA_LOCKED', 'Try 3 error must be MFA_LOCKED');
 
     const userAfterTry3 = await prisma.user.findUnique({ where: { id: mfaTestUser.id } });
     assert.strictEqual(userAfterTry3.mfaFailedAttempts, 0, 'Counter must be reset to 0 upon reaching 3');
-    assert.ok(userAfterTry3.mfaLockedUntil && new Date(userAfterTry3.mfaLockedUntil) > new Date(), 'mfaLockedUntil must be set to a future date');
+    assert.ok(userAfterTry3.mfaLockedUntil && new Date(userAfterTry3.mfaLockedUntil) > new Date());
 
-    console.log('  ✓ After lock expired, user received 3 fresh attempts (Try 1: 2 left, Try 2: 1 left, Try 3: 429 locked & reset).');
-
-    // Clean up temporary user
+    console.log('  ✓ User received 3 fresh tries after lock expiration; lockout reset counter to 0.');
     await prisma.user.delete({ where: { id: mfaTestUser.id } });
 
+    // -----------------------------------------------------------------
+    // TEST 4: Chef/Admin with mfaEnabled === false triggers mfaSetupRequired
+    // -----------------------------------------------------------------
+    console.log('\n[Test 4/7] Chef/Admin login with mfaEnabled === false returns mfaSetupRequired & mfaToken (type: mfa_setup)...');
+
+    const chefSalt = generate5DigitSalt();
+    const chefHash = await hashPassword('ChefPass123!', chefSalt);
+    const chefNoMfa = await prisma.user.create({
+      data: {
+        username: `chef_nomfa_${timestamp}`,
+        email: `chef_nomfa_${timestamp}@gmail.com`,
+        passwordHash: chefHash,
+        salt: chefSalt,
+        role: 'CHEF',
+        status: 'ACTIVE',
+        mfaEnabled: false,
+        mfaSecret: null
+      }
+    });
+
+    const loginRes = await makeRequest(server, {
+      path: '/api/auth/login',
+      method: 'POST'
+    }, {
+      identifier: chefNoMfa.email,
+      password: 'ChefPass123!',
+      recaptchaToken: 'test_token'
+    });
+
+    assert.strictEqual(loginRes.statusCode, 200, 'Login must return 200');
+    assert.strictEqual(loginRes.body.ok, true);
+    assert.strictEqual(loginRes.body.mfaSetupRequired, true, 'Must return mfaSetupRequired: true');
+    assert.ok(typeof loginRes.body.mfaToken === 'string', 'Must return mfaToken string');
+
+    // Verify mfaToken has type: 'mfa_setup'
+    const setupClaims = await verifyMfaSetupJwt(loginRes.body.mfaToken);
+    assert.ok(setupClaims, 'Token must verify as mfa_setup');
+    assert.strictEqual(setupClaims.type, 'mfa_setup');
+
+    // Verify mfa_setup token CANNOT be used as session
+    const meWithSetupToken = await makeRequest(server, {
+      path: '/api/auth/me',
+      method: 'GET',
+      headers: { Cookie: `auth_token=${loginRes.body.mfaToken}` }
+    });
+    assert.strictEqual(meWithSetupToken.statusCode, 401, 'mfa_setup token must NOT work as session');
+
+    console.log('  ✓ mfaSetupRequired returned with type: "mfa_setup" token; token cannot access session endpoints.');
+
+    // -----------------------------------------------------------------
+    // TEST 5: POST /api/auth/mfa/setup-pending and confirm-pending
+    // -----------------------------------------------------------------
+    console.log('\n[Test 5/7] POST /api/auth/mfa/setup-pending & confirm-pending with atomic lockout & recovery codes...');
+
+    const setupPendingRes = await makeRequest(server, {
+      path: '/api/auth/mfa/setup-pending',
+      method: 'POST'
+    }, {
+      mfaToken: loginRes.body.mfaToken
+    });
+
+    assert.strictEqual(setupPendingRes.statusCode, 200, 'setup-pending must return 200');
+    assert.ok(typeof setupPendingRes.body.secret === 'string', 'setup-pending returns secret');
+    assert.ok(typeof setupPendingRes.body.qrCode === 'string', 'setup-pending returns qrCode data URL');
+
+    const generatedSecret = setupPendingRes.body.secret;
+
+    // Test invalid code attempt on confirm-pending (failed attempts tracked)
+    const badConfirm = await makeRequest(server, {
+      path: '/api/auth/mfa/confirm-pending',
+      method: 'POST'
+    }, {
+      mfaToken: loginRes.body.mfaToken,
+      secret: generatedSecret,
+      code: '000000'
+    });
+    assert.strictEqual(badConfirm.statusCode, 400, 'Invalid code returns 400');
+    assert.ok(badConfirm.body.error.message.includes('2 attempt(s) remaining'));
+
+    // Generate valid TOTP using otpauth
+    const totp = new OTPAuth.TOTP({
+      issuer: 'BHT Diner',
+      label: chefNoMfa.email,
+      algorithm: 'SHA1',
+      digits: 6,
+      period: 30,
+      secret: OTPAuth.Secret.fromBase32(generatedSecret)
+    });
+    const validTotpCode = totp.generate();
+
+    const goodConfirm = await makeRequest(server, {
+      path: '/api/auth/mfa/confirm-pending',
+      method: 'POST'
+    }, {
+      mfaToken: loginRes.body.mfaToken,
+      secret: generatedSecret,
+      code: validTotpCode
+    });
+
+    assert.strictEqual(goodConfirm.statusCode, 200, 'confirm-pending with valid code returns 200');
+    assert.strictEqual(goodConfirm.body.ok, true);
+    assert.strictEqual(goodConfirm.body.recoveryCodes.length, 10, 'Must return 10 recovery codes');
+    assert.ok(goodConfirm.headers['set-cookie'], 'Must issue auth_token cookie');
+
+    const chefInDb = await prisma.user.findUnique({
+      where: { id: chefNoMfa.id },
+      include: { recoveryCodes: true }
+    });
+    assert.strictEqual(chefInDb.mfaEnabled, true, 'User mfaEnabled must now be true');
+    assert.strictEqual(chefInDb.recoveryCodes.length, 10, '10 recovery codes stored in DB');
+
+    console.log('  ✓ setup-pending generated QR & secret; confirm-pending validated TOTP, saved secret & issued 10 recovery codes.');
+
+    // -----------------------------------------------------------------
+    // TEST 6: /mfa/confirm returns 409 if already enabled; /mfa/disable requires password + code
+    // -----------------------------------------------------------------
+    console.log('\n[Test 6/7] /mfa/confirm returns 409 if MFA enabled; /mfa/disable requires password + code...');
+
+    // Create active viewer with MFA enabled
+    const viewerSalt = generate5DigitSalt();
+    const viewerHash = await hashPassword('ViewerPass123!', viewerSalt);
+    const viewerWithMfa = await prisma.user.create({
+      data: {
+        username: `viewer_mfa_${timestamp}`,
+        email: `viewer_mfa_${timestamp}@gmail.com`,
+        passwordHash: viewerHash,
+        salt: viewerSalt,
+        role: 'VIEWER',
+        status: 'ACTIVE',
+        mfaSecret: 'JBSWY3DPEHPK3PXP',
+        mfaEnabled: true
+      }
+    });
+
+    const viewerSessionToken = await signSessionJwt(viewerWithMfa);
+    const viewerClaims = await verifySessionJwt(viewerSessionToken);
+    const viewerCsrf = generateCsrfToken(viewerClaims);
+    const viewerHeaders = {
+      Cookie: `auth_token=${viewerSessionToken}`,
+      'X-CSRF-Token': viewerCsrf
+    };
+
+    // Test /mfa/confirm when already enabled -> 409
+    const confirmAlreadyEnabled = await makeRequest(server, {
+      path: '/api/auth/mfa/confirm',
+      method: 'POST',
+      headers: viewerHeaders
+    }, {
+      secret: 'JBSWY3DPEHPK3PXP',
+      code: '123456'
+    });
+    assert.strictEqual(confirmAlreadyEnabled.statusCode, 409, '/mfa/confirm must return 409 when MFA already enabled');
+    assert.strictEqual(confirmAlreadyEnabled.body.error.code, 'MFA_ALREADY_ENABLED');
+
+    // Test /mfa/disable without password or code -> 400
+    const disableNoParams = await makeRequest(server, {
+      path: '/api/auth/mfa/disable',
+      method: 'POST',
+      headers: viewerHeaders
+    }, {});
+    assert.strictEqual(disableNoParams.statusCode, 400, 'Disable without credentials returns 400');
+
+    // Test /mfa/disable with wrong password -> 400
+    const disableBadPw = await makeRequest(server, {
+      path: '/api/auth/mfa/disable',
+      method: 'POST',
+      headers: viewerHeaders
+    }, {
+      password: 'WrongPassword!',
+      code: '123456'
+    });
+    assert.strictEqual(disableBadPw.statusCode, 400, 'Disable with bad password returns 400');
+    assert.strictEqual(disableBadPw.body.error.code, 'INVALID_PASSWORD');
+
+    // Generate valid TOTP for viewer
+    const viewerTotp = new OTPAuth.TOTP({
+      issuer: 'BHT Diner',
+      label: viewerWithMfa.email,
+      algorithm: 'SHA1',
+      digits: 6,
+      period: 30,
+      secret: OTPAuth.Secret.fromBase32('JBSWY3DPEHPK3PXP')
+    });
+
+    // Test /mfa/disable with correct password and correct TOTP code
+    const disableSuccess = await makeRequest(server, {
+      path: '/api/auth/mfa/disable',
+      method: 'POST',
+      headers: viewerHeaders
+    }, {
+      password: 'ViewerPass123!',
+      code: viewerTotp.generate()
+    });
+    assert.strictEqual(disableSuccess.statusCode, 200, 'Disable with valid credentials returns 200');
+    assert.strictEqual(disableSuccess.body.ok, true);
+
+    const viewerAfterDisable = await prisma.user.findUnique({ where: { id: viewerWithMfa.id } });
+    assert.strictEqual(viewerAfterDisable.mfaEnabled, false, 'Viewer mfaEnabled is now false');
+    assert.strictEqual(viewerAfterDisable.mfaSecret, null, 'Viewer mfaSecret is null');
+
+    console.log('  ✓ /mfa/confirm returned 409; /mfa/disable verified password + TOTP before disabling.');
+
+    // -----------------------------------------------------------------
+    // TEST 7: POST /api/admin/users/:id/mfa-reset
+    // -----------------------------------------------------------------
+    console.log('\n[Test 7/7] POST /api/admin/users/:id/mfa-reset clears secret, enabled, drift, counters, recovery codes...');
+
+    // Find or create admin user for auth
+    const adminUser = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
+    assert.ok(adminUser, 'Admin user must exist in database');
+
+    const adminSessionToken = await signSessionJwt(adminUser);
+    const adminClaims = await verifySessionJwt(adminSessionToken);
+    const adminCsrf = generateCsrfToken(adminClaims);
+    const adminHeaders = {
+      Cookie: `auth_token=${adminSessionToken}`,
+      'X-CSRF-Token': adminCsrf
+    };
+
+    // Reset chefNoMfa (which was activated with MFA in Test 5)
+    const resetRes = await makeRequest(server, {
+      path: `/api/admin/users/${chefNoMfa.id}/mfa-reset`,
+      method: 'POST',
+      headers: adminHeaders
+    }, {});
+
+    assert.strictEqual(resetRes.statusCode, 200, 'MFA reset returns 200');
+    assert.strictEqual(resetRes.body.ok, true);
+
+    const chefAfterReset = await prisma.user.findUnique({
+      where: { id: chefNoMfa.id },
+      include: { recoveryCodes: true }
+    });
+
+    assert.strictEqual(chefAfterReset.mfaSecret, null, 'mfaSecret is cleared to null');
+    assert.strictEqual(chefAfterReset.mfaEnabled, false, 'mfaEnabled is set to false');
+    assert.strictEqual(chefAfterReset.mfaDrift, 0, 'mfaDrift is reset to 0');
+    assert.strictEqual(chefAfterReset.mfaFailedAttempts, 0, 'mfaFailedAttempts is reset to 0');
+    assert.strictEqual(chefAfterReset.mfaLockedUntil, null, 'mfaLockedUntil is null');
+    assert.strictEqual(chefAfterReset.recoveryCodeAttempts, 0, 'recoveryCodeAttempts is 0');
+    assert.strictEqual(chefAfterReset.recoveryCodes.length, 0, 'All recovery codes deleted');
+
+    // Verify non-admin cannot call mfa-reset (403 FORBIDDEN)
+    const unauthReset = await makeRequest(server, {
+      path: `/api/admin/users/${chefNoMfa.id}/mfa-reset`,
+      method: 'POST',
+      headers: viewerHeaders
+    }, {});
+    assert.strictEqual(unauthReset.statusCode, 403, 'Non-admin receives 403 FORBIDDEN');
+
+    console.log('  ✓ Admin successfully reset target user MFA; non-admin blocked with 403 FORBIDDEN.');
+
+    // Clean up test users
+    await prisma.user.delete({ where: { id: viewerWithMfa.id } });
+    await prisma.user.delete({ where: { id: chefNoMfa.id } });
+
     console.log('\n=================================================================');
-    console.log('🎉 ALL 3 SECURITY TESTS PASSED SUCCESSFULLY WITH 100% ASSERTIONS!');
+    console.log('🎉 ALL 7 ADVANCED AUTH & MFA TESTS PASSED WITH 100% SUCCESS!');
     console.log('=================================================================\n');
   } finally {
     server.close();

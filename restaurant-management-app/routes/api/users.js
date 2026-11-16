@@ -133,4 +133,53 @@ router.patch('/:id', requirePermission('user:manage'), async (req, res, next) =>
   }
 });
 
+// POST /api/admin/users/:id/mfa-reset - Clear user MFA configuration & recovery codes
+router.post('/:id/mfa-reset', requirePermission('user:manage'), async (req, res, next) => {
+  try {
+    const rawId = req.params.id;
+    const targetUserId = parseInt(rawId, 10);
+
+    if (isNaN(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({
+        ok: false,
+        error: { code: 'INVALID_ID', message: 'Invalid user ID.' }
+      });
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId }
+    });
+
+    if (!targetUser) {
+      return res.status(404).json({
+        ok: false,
+        error: { code: 'NOT_FOUND', message: 'User not found.' }
+      });
+    }
+
+    await prisma.$transaction([
+      prisma.recoveryCode.deleteMany({ where: { userId: targetUserId } }),
+      prisma.user.update({
+        where: { id: targetUserId },
+        data: {
+          mfaSecret: null,
+          mfaEnabled: false,
+          mfaDrift: 0,
+          mfaFailedAttempts: 0,
+          mfaLockedUntil: null,
+          recoveryCodeAttempts: 0,
+          recoveryCodeLockedUntil: null
+        }
+      })
+    ]);
+
+    return res.status(200).json({
+      ok: true,
+      message: `MFA reset successfully for user ${targetUser.username}.`
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

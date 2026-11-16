@@ -12,7 +12,7 @@ export default function Layout({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [avatarDropdownOpen, setAvatarDropdownOpen] = useState(false);
 
-  // Viewer MFA Modal states
+  // Viewer MFA Modal states (Enable)
   const [mfaModalOpen, setMfaModalOpen] = useState(false);
   const [mfaSetupData, setMfaSetupData] = useState(null);
   const [mfaCodeInput, setMfaCodeInput] = useState('');
@@ -20,6 +20,13 @@ export default function Layout({ children }) {
   const [mfaLoading, setMfaLoading] = useState(false);
   const [recoveryCodes, setRecoveryCodes] = useState(null);
   const [copiedCodes, setCopiedCodes] = useState(false);
+
+  // Viewer MFA Modal states (Disable)
+  const [mfaDisableModalOpen, setMfaDisableModalOpen] = useState(false);
+  const [disablePassword, setDisablePassword] = useState('');
+  const [disableCode, setDisableCode] = useState('');
+  const [disableError, setDisableError] = useState('');
+  const [disableLoading, setDisableLoading] = useState(false);
 
   const dropdownRef = useRef(null);
   const location = useLocation();
@@ -62,17 +69,11 @@ export default function Layout({ children }) {
     if (!currentUser) return;
 
     if (currentUser.mfaEnabled) {
-      // Disable MFA
-      if (window.confirm('Are you sure you want to disable multi-factor authentication?')) {
-        setMfaLoading(true);
-        const res = await api.disableMfa();
-        setMfaLoading(false);
-        if (res?.ok) {
-          setCurrentUser((prev) => ({ ...prev, mfaEnabled: false }));
-        } else {
-          alert(res?.error?.message || 'Failed to disable MFA.');
-        }
-      }
+      // Disable MFA: Open modal requesting password and current code
+      setDisablePassword('');
+      setDisableCode('');
+      setDisableError('');
+      setMfaDisableModalOpen(true);
     } else {
       // Enable MFA: Start setup modal
       setMfaLoading(true);
@@ -87,6 +88,30 @@ export default function Layout({ children }) {
       } else {
         alert(res?.error?.message || 'Failed to start MFA setup.');
       }
+    }
+  };
+
+  // Disable MFA with password and code
+  const handleDisableMfa = async (e) => {
+    e.preventDefault();
+    if (!disablePassword || !disableCode) return;
+
+    setDisableLoading(true);
+    setDisableError('');
+
+    const res = await api.disableMfa({
+      password: disablePassword,
+      code: disableCode
+    });
+    setDisableLoading(false);
+
+    if (res?.ok) {
+      setCurrentUser((prev) => ({ ...prev, mfaEnabled: false }));
+      setMfaDisableModalOpen(false);
+      setDisablePassword('');
+      setDisableCode('');
+    } else {
+      setDisableError(res?.error?.message || 'Failed to disable MFA. Please verify your credentials.');
     }
   };
 
@@ -555,6 +580,80 @@ export default function Layout({ children }) {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Disable MFA Modal */}
+      {mfaDisableModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl border border-slate-100">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-700 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">Disable Two-Factor Auth</h3>
+                <p className="text-2xs text-slate-500">Requires verification to disable</p>
+              </div>
+            </div>
+
+            <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs">
+              Disabling MFA reduces your account security. You must confirm your password and enter an active verification code or backup recovery code.
+            </div>
+
+            {disableError && (
+              <div className="mb-4 p-3 rounded-xl bg-rose-100 text-rose-800 text-xs font-semibold">
+                {disableError}
+              </div>
+            )}
+
+            <form onSubmit={handleDisableMfa} className="space-y-3.5">
+              <div>
+                <label className="block text-2xs font-black uppercase text-slate-700 mb-1">
+                  Current Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={disablePassword}
+                  onChange={(e) => setDisablePassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 focus:outline-none focus:border-[#ba1414] focus:ring-2 focus:ring-[#ba1414]/20 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-2xs font-black uppercase text-slate-700 mb-1">
+                  6-Digit TOTP or Recovery Code
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={disableCode}
+                  onChange={(e) => setDisableCode(e.target.value)}
+                  placeholder="123456 or XXXX-XXXX"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 focus:outline-none focus:border-[#ba1414] focus:ring-2 focus:ring-[#ba1414]/20 text-sm font-mono text-center tracking-widest"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setMfaDisableModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={disableLoading || !disablePassword || !disableCode}
+                  className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white font-bold text-xs hover:bg-rose-700 transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {disableLoading ? 'Verifying...' : 'Disable MFA'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

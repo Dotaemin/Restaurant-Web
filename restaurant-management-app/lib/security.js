@@ -148,12 +148,37 @@ async function signMfaPendingJwt(user) {
 }
 
 /**
+ * Sign temporary pre-auth JWT token for pending MFA setup (5-minute expiry)
+ */
+async function signMfaSetupJwt(user) {
+  return await new SignJWT({ type: 'mfa_setup', userId: user.id })
+    .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+    .setSubject(String(user.id))
+    .setIssuedAt()
+    .setExpirationTime('5m')
+    .sign(JWT_SECRET_KEY);
+}
+
+/**
  * Verify temporary MFA token
  */
 async function verifyMfaPendingJwt(token) {
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET_KEY);
     if (payload.type !== 'mfa_pending') return null;
+    return payload;
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
+ * Verify temporary MFA setup token
+ */
+async function verifyMfaSetupJwt(token) {
+  try {
+    const { payload } = await jwtVerify(token, JWT_SECRET_KEY);
+    if (!payload || payload.type !== 'mfa_setup') return null;
     return payload;
   } catch (err) {
     return null;
@@ -200,7 +225,9 @@ module.exports = {
   verifyRecaptcha,
   signSessionJwt,
   signMfaPendingJwt,
+  signMfaSetupJwt,
   verifyMfaPendingJwt,
+  verifyMfaSetupJwt,
   verifySessionJwt,
   generateCsrfToken,
   verifyCsrfToken
